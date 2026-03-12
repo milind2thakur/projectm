@@ -1,0 +1,11 @@
+app:
+  name: "Project M"
+  mode: "prototype"
+
+model:
+  path: "models/projectm.gguf"
+  context_size: 2048
+
+security:
+  sandbox_enabled: true
+  dry_run_installs: true
