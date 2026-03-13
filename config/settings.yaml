@@ -1,11 +1,10 @@
-app:
-  name: "Project M"
-  mode: "prototype"
-
-model:
-  path: "models/projectm.gguf"
-  context_size: 2048
-
-security:
-  sandbox_enabled: true
-  dry_run_installs: true
+app_name: Project M
+mode: fallback
+default_search_root: ~
+allowed_apps:
+  - firefox
+  - google-chrome
+  - chromium
+  - gnome-terminal
+  - x-terminal-emulator
+  - code

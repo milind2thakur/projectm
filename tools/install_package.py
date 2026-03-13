@@ -1,14 +1,18 @@
-"""Safe package install wrapper with deny-by-default behavior."""
+"""Package installation preview tool (no execution in V1)."""
 
 from __future__ import annotations
 
-ALLOWED_PACKAGES = {"htop", "curl", "git"}
 
-
-def run(package_name: str) -> str:
-    package = package_name.strip().split()[0]
-    if package not in ALLOWED_PACKAGES:
-        return f"Blocked package '{package}'. Allowed: {sorted(ALLOWED_PACKAGES)}"
-
-    # Prototype behavior: only simulate installation for safety.
-    return f"[dry-run] Would install package: {package}"
+def prepare_install(package: str) -> dict[str, object]:
+    safe_package = package.strip().split()[0]
+    if not safe_package:
+        return {"status": "error", "tool": "install_package", "message": "Package name is required."}
+    return {
+        "status": "success",
+        "tool": "install_package",
+        "message": "Installation requires explicit confirmation.",
+        "data": {
+            "requires_confirmation": True,
+            "command_preview": f"sudo apt install -y {safe_package}",
+        },
+    }

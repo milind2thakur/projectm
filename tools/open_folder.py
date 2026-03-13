@@ -1,8 +1,7 @@
-"""Safe wrapper for opening approved local folders."""
+"""Safe folder opener for known user directories."""
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -14,24 +13,14 @@ ALLOWED_FOLDERS = {
 }
 
 
-def run(target: str) -> str:
-    key = target.strip().lower()
-    folder = ALLOWED_FOLDERS.get(key)
+def open_folder(folder_name: str) -> dict[str, object]:
+    key = folder_name.strip().lower()
+    if key not in ALLOWED_FOLDERS:
+        return {"status": "error", "tool": "open_folder", "message": f"Folder '{folder_name}' is not allowed."}
 
-    if folder is None:
-        # Allow explicit absolute paths under home directory.
-        candidate = Path(target).expanduser().resolve()
-        if str(candidate).startswith(str(Path.home().resolve())):
-            folder = candidate
-        else:
-            return f"Blocked folder '{target}'. Use approved locations only."
+    path = ALLOWED_FOLDERS[key].expanduser().resolve()
+    if not path.exists():
+        return {"status": "error", "tool": "open_folder", "message": f"Folder does not exist: {path}"}
 
-    if not folder.exists() or not folder.is_dir():
-        return f"Folder not found: {folder}"
-
-    opener = "xdg-open" if os.name != "nt" else "explorer"
-    try:
-        subprocess.Popen([opener, str(folder)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return f"Opening folder: {folder}"
-    except Exception as exc:
-        return f"Failed to open folder '{folder}': {exc}"
+    subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"status": "success", "tool": "open_folder", "message": f"Opening {path}.", "data": {"path": str(path)}}
