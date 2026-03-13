@@ -8,7 +8,7 @@ Users issue natural-language commands (text first, voice-ready later). Project M
 
 ## Architecture
 
-`User text/voice -> command interpreter -> tool router -> safe tool execution -> UI result`
+`User text/voice -> Agent Engine -> command interpreter -> task planner -> execution manager -> tool router -> safe tool execution -> UI result`
 
 ## Current Features (V1 Prototype)
 
