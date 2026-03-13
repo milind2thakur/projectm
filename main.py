@@ -1,7 +1,8 @@
-"""Project M desktop entrypoint."""
+"""Project M desktop/CLI entrypoint."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -20,9 +21,12 @@ def load_settings(path: Path) -> dict:
         return yaml.safe_load(file) or {}
 
 
-def main() -> None:
-    settings = load_settings(Path("config/settings.yaml"))
+def should_launch_gui() -> bool:
+    """Return True when a desktop display server appears available."""
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
+
+def build_agent_engine(settings: dict) -> AgentEngine:
     interpreter = CommandInterpreter(
         model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
     )
@@ -30,8 +34,7 @@ def main() -> None:
     memory = MemoryEngine()
     permission_manager = PermissionManager()
     sandbox = SandboxRunner()
-
-    agent_engine = AgentEngine(
+    return AgentEngine(
         interpreter=interpreter,
         router=router,
         memory=memory,
@@ -39,8 +42,28 @@ def main() -> None:
         sandbox=sandbox,
     )
 
-    app = OrbWindow(agent_engine=agent_engine)
-    app.run()
+
+def run_cli(agent_engine: AgentEngine) -> None:
+    """Headless-safe fallback loop when no GUI display is available."""
+    print("Project M (CLI fallback) started. Type 'exit' or 'quit' to stop.")
+    while True:
+        user_input = input("\nYou> ").strip()
+        if user_input.lower() in {"exit", "quit"}:
+            print("Goodbye from Project M.")
+            return
+        result = agent_engine.handle_user_input(user_input)
+        print(result)
+
+
+def main() -> None:
+    settings = load_settings(Path("config/settings.yaml"))
+    agent_engine = build_agent_engine(settings)
+
+    if should_launch_gui():
+        app = OrbWindow(agent_engine=agent_engine)
+        app.run()
+    else:
+        run_cli(agent_engine)
 
 
 if __name__ == "__main__":

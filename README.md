@@ -65,7 +65,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-This launches the Project M orb desktop window. Type `exit` or `quit` in the input box to close the window.
+This launches the Project M orb desktop window when a display server is available. In headless environments, Project M automatically falls back to a CLI loop. In either mode, type `exit` or `quit` to close.
 
 ## Example Commands
 
