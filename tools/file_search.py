@@ -1,26 +1,37 @@
-"""Simple safe file search limited to user's home directory."""
+"""Filename-only local file search."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
-MAX_RESULTS = 5
+MAX_RESULTS = 20
 
 
-def run(query: str) -> str:
-    root = Path.home()
+def search_files(query: str, root: Path | None = None) -> dict[str, object]:
     needle = query.strip().lower()
     if not needle:
-        return "Please provide a filename query."
+        return {"status": "error", "tool": "file_search", "message": "Search query cannot be empty."}
 
-    results = []
-    for path in root.rglob("*"):
-        if len(results) >= MAX_RESULTS:
-            break
-        if needle in path.name.lower():
-            results.append(str(path))
+    search_root = (root or Path.home()).expanduser()
+    matches: list[str] = []
 
-    if not results:
-        return f"No files found for query: {query}"
-    return "Found files:\n" + "\n".join(results)
+    for current_root, _, files in os.walk(search_root):
+        for name in files:
+            if needle in name.lower():
+                matches.append(str(Path(current_root) / name))
+                if len(matches) >= MAX_RESULTS:
+                    return {
+                        "status": "success",
+                        "tool": "file_search",
+                        "message": f"Found {len(matches)} matches (capped).",
+                        "data": {"results": matches},
+                    }
+
+    return {
+        "status": "success",
+        "tool": "file_search",
+        "message": f"Found {len(matches)} matches.",
+        "data": {"results": matches},
+    }

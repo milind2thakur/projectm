@@ -1,7 +1,11 @@
-"""Placeholder desktop controller that would coordinate UI state."""
+"""Placeholder desktop/window controller for future Linux integration."""
 
 from __future__ import annotations
 
 
-def launch() -> str:
-    return "Desktop controller initialized (prototype mode)."
+class DesktopController:
+    def summon_window(self, name: str) -> dict[str, str]:
+        return {"status": "placeholder", "message": f"Would summon window: {name}"}
+
+    def hide_window(self, name: str) -> dict[str, str]:
+        return {"status": "placeholder", "message": f"Would hide window: {name}"}

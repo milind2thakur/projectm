@@ -1,39 +1,43 @@
-"""Project M main entrypoint with a minimal command loop."""
+"""Project M desktop entrypoint."""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-# Add local module folders with hyphenated names for direct imports.
-PROJECT_ROOT = Path(__file__).resolve().parent
-sys.path.append(str(PROJECT_ROOT / "ai-core"))
-sys.path.append(str(PROJECT_ROOT / "tools"))
-sys.path.append(str(PROJECT_ROOT / "security"))
+import yaml
 
-from command_interpreter import CommandInterpreter
+from ai_core.command_interpreter import CommandInterpreter
+from ai_core.memory_engine import MemoryEngine
+from ai_core.tool_router import ToolRouter
+from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
-from tool_router import ToolRouter
+from ui.orb_window import OrbWindow
+
+
+def load_settings(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
 
 
 def main() -> None:
-    interpreter = CommandInterpreter()
+    settings = load_settings(Path("config/settings.yaml"))
+
+    interpreter = CommandInterpreter(
+        model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
+    )
     router = ToolRouter()
+    memory = MemoryEngine()
+    permission_manager = PermissionManager()
     sandbox = SandboxRunner()
 
-    print("Project M prototype started. Type 'exit' to quit.")
-
-    while True:
-        user_command = input("\nYou> ").strip()
-        if user_command.lower() in {"exit", "quit"}:
-            print("Project M shutting down.")
-            break
-
-        interpreted = interpreter.interpret(user_command)
-        print(f"AI interpretation: {interpreted}")
-
-        result = sandbox.execute(interpreted, lambda: router.route_and_execute(interpreted))
-        print(f"System response: {result}")
+    app = OrbWindow(
+        interpreter=interpreter,
+        router=router,
+        memory=memory,
+        permission_manager=permission_manager,
+        sandbox=sandbox,
+    )
+    app.run()
 
 
 if __name__ == "__main__":
