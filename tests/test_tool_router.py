@@ -12,3 +12,9 @@ def test_unknown_tool_returns_error() -> None:
     router = ToolRouter()
     result = router.route({"tool": "does_not_exist", "args": {}})
     assert result["status"] == "error"
+
+
+def test_install_package_empty_input_returns_error() -> None:
+    router = ToolRouter()
+    result = router.route({"tool": "install_package", "args": {"package": "   "}})
+    assert result["status"] == "error"

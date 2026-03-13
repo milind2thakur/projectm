@@ -16,3 +16,10 @@ def test_fallback_install_package() -> None:
         "args": {"package": "numpy"},
         "raw_command": "install numpy",
     }
+
+
+def test_fallback_open_downloads_folder_alias() -> None:
+    interpreter = CommandInterpreter(model_path=None)
+    command = interpreter.interpret("open downloads folder")
+    assert command["tool"] == "open_folder"
+    assert command["args"]["folder"] == "downloads"

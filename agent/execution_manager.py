@@ -39,7 +39,14 @@ class ExecutionManager:
                 }
 
             command = {"tool": tool_name, "args": step.get("args", {})}
-            result = self.sandbox.run(lambda cmd=command: self.router.route(cmd))
+            try:
+                result = self.sandbox.run(lambda cmd=command: self.router.route(cmd))
+            except Exception as exc:  # pragma: no cover - defensive UI safety net
+                result = {
+                    "status": "error",
+                    "tool": tool_name,
+                    "message": f"Tool execution failed: {exc}",
+                }
 
             record = {"step": step, "result": result}
             executed.append(record)
@@ -52,4 +59,8 @@ class ExecutionManager:
                     "steps_executed": executed,
                 }
 
-        return {"status": "success", "steps_executed": executed, "result": executed[-1]["result"] if executed else {}}
+        return {
+            "status": "success",
+            "steps_executed": executed,
+            "result": executed[-1]["result"] if executed else {},
+        }

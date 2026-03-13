@@ -15,6 +15,25 @@ from .prompt_engine import build_system_prompt
 class CommandInterpreter:
     """Interprets free-form user input into a structured tool command."""
 
+    FOLDER_ALIASES = {
+        "downloads": "downloads",
+        "downloads folder": "downloads",
+        "documents": "documents",
+        "documents folder": "documents",
+        "desktop": "desktop",
+        "desktop folder": "desktop",
+        "home": "home",
+        "home folder": "home",
+    }
+
+    APP_ALIASES = {
+        "firefox": "firefox",
+        "chrome": "google-chrome",
+        "google chrome": "google-chrome",
+        "chromium": "chromium",
+        "terminal": "x-terminal-emulator",
+    }
+
     def __init__(self, model_path: str | None = None) -> None:
         self.model_path = model_path
         self.allowed_tools = ["open_app", "open_folder", "system_info", "install_package", "file_search"]
@@ -60,23 +79,16 @@ class CommandInterpreter:
     def _interpret_fallback(self, user_text: str) -> dict[str, Any]:
         text = re.sub(r"\s+", " ", user_text.strip().lower())
 
-        app_aliases = {
-            "firefox": "firefox",
-            "chrome": "google-chrome",
-            "google chrome": "google-chrome",
-            "chromium": "chromium",
-            "terminal": "x-terminal-emulator",
-        }
-        folder_aliases = {"downloads": "Downloads", "documents": "Documents", "desktop": "Desktop", "home": "Home"}
-
         if text.startswith("open "):
-            target = text.removeprefix("open ").strip()
-            if target in app_aliases:
-                return {"tool": "open_app", "args": {"app": app_aliases[target]}, "raw_command": user_text}
-            if target in folder_aliases:
-                return {"tool": "open_folder", "args": {"folder": folder_aliases[target]}, "raw_command": user_text}
-            if any(word in target for word in ["downloads", "documents", "desktop", "home"]):
-                return {"tool": "open_folder", "args": {"folder": target.title()}, "raw_command": user_text}
+            target = text.removeprefix("open ").strip().lower()
+            if target in self.APP_ALIASES:
+                return {"tool": "open_app", "args": {"app": self.APP_ALIASES[target]}, "raw_command": user_text}
+            if target in self.FOLDER_ALIASES:
+                return {
+                    "tool": "open_folder",
+                    "args": {"folder": self.FOLDER_ALIASES[target]},
+                    "raw_command": user_text,
+                }
             return {"tool": "open_app", "args": {"app": target}, "raw_command": user_text}
 
         if text in {"show cpu usage", "cpu usage", "show cpu"}:

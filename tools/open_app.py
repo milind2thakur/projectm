@@ -17,12 +17,33 @@ ALLOWED_APPS = {
 
 def open_app(app_name: str) -> dict[str, object]:
     app = app_name.strip().lower()
+
     if app not in ALLOWED_APPS:
-        return {"status": "error", "tool": "open_app", "message": f"App '{app}' is not in the allowlist."}
+        return {
+            "status": "error",
+            "tool": "open_app",
+            "message": f"App '{app}' is not in the allowlist.",
+        }
 
     binary = shutil.which(app)
     if not binary:
-        return {"status": "error", "tool": "open_app", "message": f"App '{app}' is not installed."}
+        return {
+            "status": "error",
+            "tool": "open_app",
+            "message": f"App '{app}' is not installed.",
+        }
 
-    subprocess.Popen([binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {"status": "success", "tool": "open_app", "message": f"Opening {app}.", "data": {"app": app}}
+    try:
+        subprocess.Popen([binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {
+            "status": "success",
+            "tool": "open_app",
+            "message": f"Opening {app}.",
+            "data": {"app": app},
+        }
+    except Exception as exc:  # pragma: no cover - system dependent failure mode
+        return {
+            "status": "error",
+            "tool": "open_app",
+            "message": f"Failed to open '{app}': {exc}",
+        }
