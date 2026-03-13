@@ -16,7 +16,7 @@ STATE_TO_ORB = {
     AgentState.LISTENING: "listening",
     AgentState.THINKING: "thinking",
     AgentState.EXECUTING: "executing",
-    AgentState.ERROR: "idle",
+    AgentState.ERROR: "thinking",
 }
 
 
@@ -61,6 +61,9 @@ class OrbWindow:
         self.status.set(message)
         self.root.update_idletasks()
 
+    def _sync_state(self, _state: str) -> None:
+        self._update_ui_state(self.status.var.get())
+
     def handle_command(self, text: str) -> None:
         normalized = text.strip().lower()
 
@@ -76,14 +79,8 @@ class OrbWindow:
             self.root.after(900, lambda: self._after_command_message("How can I help you?"))
             return
 
-        self.agent_engine.state.set_state(AgentState.LISTENING)
-        self._update_ui_state("Listening...")
-        self.agent_engine.state.set_state(AgentState.THINKING)
-        self._update_ui_state("Thinking...")
-        self.agent_engine.state.set_state(AgentState.EXECUTING)
-        self._update_ui_state("Executing...")
-
-        result = self.agent_engine.handle_user_input(text)
+        self._update_ui_state("Processing request...")
+        result = self.agent_engine.handle_user_input(text, on_state_change=self._sync_state)
 
         status = result.get("status", "error")
         prefix = "✅" if status == "success" else "⚠️"

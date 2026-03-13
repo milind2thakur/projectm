@@ -18,15 +18,21 @@ def _build_engine() -> AgentEngine:
 
 def test_agent_engine_success_flow() -> None:
     engine = _build_engine()
-    result = engine.handle_user_input("find invoice")
+    states: list[str] = []
+    result = engine.handle_user_input("find invoice", on_state_change=states.append)
     assert result["status"] == "success"
     assert result["steps_executed"]
+    assert states[:3] == [AgentState.LISTENING, AgentState.THINKING, AgentState.EXECUTING]
+    assert states[-1] == AgentState.IDLE
     assert engine.state.get_state() == AgentState.IDLE
 
 
 def test_agent_engine_permission_error() -> None:
     engine = _build_engine()
-    result = engine.handle_user_input("install numpy")
+    states: list[str] = []
+    result = engine.handle_user_input("install numpy", on_state_change=states.append)
     assert result["status"] == "error"
     assert result["failed_step"]["tool"] == "install_package"
-    assert engine.state.get_state() == AgentState.ERROR
+    assert AgentState.ERROR in states
+    assert states[-1] == AgentState.IDLE
+    assert engine.state.get_state() == AgentState.IDLE
