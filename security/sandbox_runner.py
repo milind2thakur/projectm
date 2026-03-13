@@ -1,19 +1,16 @@
-"""Sandbox execution concept for running tool actions safely."""
+"""Simple sandbox abstraction for safe tool calls."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-
-from permission_manager import PermissionManager
+from typing import Any
 
 
 class SandboxRunner:
-    """Prototype sandbox runner that gates execution with permissions."""
+    """Runs approved Python tool callables.
 
-    def __init__(self, permission_manager: PermissionManager | None = None) -> None:
-        self.permission_manager = permission_manager or PermissionManager()
+    Future integration point: wrap this call in bubblewrap/firejail to isolate tools.
+    """
 
-    def execute(self, action: str, callback: Callable[[], str]) -> str:
-        if not self.permission_manager.is_allowed(action):
-            return f"Permission denied for action: {action}"
-        return callback()
+    def run(self, func: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        return func()

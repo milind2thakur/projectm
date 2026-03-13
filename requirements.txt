@@ -1,2 +1,6 @@
-llama-cpp-python>=0.2.90
-PyYAML>=6.0.1
+psutil
+pyyaml
+llama-cpp-python
+faster-whisper
+pyttsx3
+pytest

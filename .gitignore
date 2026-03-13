@@ -1,19 +1,10 @@
-# Python
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.pyc
+.env
+venv/
 .venv/
-
-# Tooling
-.pytest_cache/
-.mypy_cache/
-
-# Local models and runtime artifacts
-models/*
-!models/.gitkeep
+models/
 *.gguf
-
-# OS/editor
+*.bin
+*.log
 .DS_Store
-.vscode/
-.idea/
