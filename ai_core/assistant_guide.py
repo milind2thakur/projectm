@@ -10,10 +10,25 @@ from .memory_engine import MemoryEngine
 class AssistantGuide:
     """Produces lightweight, context-aware suggestions for the next action."""
 
+    def _goal_actions(self, active_goal: str) -> list[str]:
+        goal = active_goal.lower()
+        actions = ["goal status"]
+        if any(token in goal for token in ("code", "coding", "build", "project", "dev")):
+            actions.append("open coding workspace")
+        elif any(token in goal for token in ("health", "performance", "cpu", "memory", "disk")):
+            actions.append("summarize system health")
+        elif any(token in goal for token in ("window", "desktop", "app")):
+            actions.append("list windows")
+        else:
+            actions.append("list workflows")
+        actions.append("goal clear")
+        return actions
+
     def suggest_next(
         self,
         memory: MemoryEngine,
         pending_command: dict[str, Any] | None = None,
+        active_goal: str | None = None,
         limit: int = 3,
     ) -> list[str]:
         if limit <= 0:
@@ -31,13 +46,13 @@ class AssistantGuide:
             )
             return suggestions[:limit]
 
+        if active_goal:
+            suggestions.extend(self._goal_actions(active_goal))
+
         last_entry = memory.get_last_entry()
         if last_entry is None:
-            return [
-                "open coding workspace",
-                "show cpu usage",
-                "list workflows",
-            ][:limit]
+            suggestions.extend(["open coding workspace", "show cpu usage", "list workflows"])
+            return suggestions[:limit]
 
         command = last_entry.get("command", {})
         result = last_entry.get("result", {})

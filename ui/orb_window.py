@@ -8,6 +8,7 @@ from typing import Any
 
 from ai_core.assistant_guide import AssistantGuide
 from ai_core.command_interpreter import CommandInterpreter
+from ai_core.goal_session import GoalSessionManager
 from ai_core.memory_engine import MemoryEngine
 from ai_core.telemetry_logger import TelemetryLogger
 from ai_core.tool_router import ToolRouter
@@ -38,6 +39,7 @@ class OrbWindow:
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
         assistant_guide: AssistantGuide,
+        goal_session: GoalSessionManager,
         telemetry: TelemetryLogger | None = None,
         stt: SpeechToText | None = None,
         tts: TextToSpeech | None = None,
@@ -54,6 +56,7 @@ class OrbWindow:
         self.permission_manager = permission_manager
         self.sandbox = sandbox
         self.assistant_guide = assistant_guide
+        self.goal_session = goal_session
         self.telemetry = telemetry
         self.stt = stt
         self.tts = tts
@@ -122,6 +125,22 @@ class OrbWindow:
 
         if normalized in {"resume", "resume last task"}:
             self._resume_last_task()
+            return
+
+        if normalized == "goal":
+            self._show_goal_status()
+            return
+
+        if normalized == "goal status":
+            self._show_goal_status()
+            return
+
+        if normalized == "goal clear":
+            self._clear_goal()
+            return
+
+        if normalized.startswith("goal "):
+            self._set_goal(text[5:].strip())
             return
 
         self._set_state("thinking", "Thinking...")
@@ -290,6 +309,49 @@ class OrbWindow:
             result = self.sandbox.run(lambda: self.router.route(command))
         self.root.after(0, lambda: self._finalize_command(command, result))
 
+    def _show_goal_status(self) -> None:
+        status = self.goal_session.status_report()
+        if status.get("status") != "success":
+            self._set_state("idle", f"[WARN] {status.get('message', 'No active goal.')}")
+        else:
+            self._set_state("idle", f"[OK] {status.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "goal_status_requested",
+                {
+                    "source": "gui",
+                    "has_goal": bool(status.get("goal")),
+                    "tasks_total": int(status.get("tasks_total", 0)),
+                },
+            )
+        self._refresh_context_panel()
+
+    def _set_goal(self, goal_text: str) -> None:
+        result = self.goal_session.set_goal(goal_text)
+        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+        self._set_state("idle", f"{prefix} {result.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "goal_set",
+                {
+                    "source": "gui",
+                    "status": str(result.get("status", "unknown")),
+                    "goal": str(result.get("goal", "")),
+                },
+            )
+        self._refresh_context_panel()
+
+    def _clear_goal(self) -> None:
+        result = self.goal_session.clear_goal()
+        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+        self._set_state("idle", f"{prefix} {result.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "goal_cleared",
+                {"source": "gui", "status": str(result.get("status", "unknown"))},
+            )
+        self._refresh_context_panel()
+
     def _execute_workflow_step(self, step_command: dict[str, Any]) -> dict[str, Any]:
         tool_name = str(step_command.get("tool", "unknown"))
         if self.confirmation_manager.requires_confirmation(tool_name):
@@ -361,10 +423,18 @@ class OrbWindow:
         pending = self.confirmation_manager.peek_pending()
         pending_label = str(pending.get("tool", "none")) if isinstance(pending, dict) else "none"
         pending_command = pending if isinstance(pending, dict) else None
-        suggestions = self.assistant_guide.suggest_next(memory=self.memory, pending_command=pending_command, limit=3)
+        active_goal = self.goal_session.get_active_goal()
+        suggestions = self.assistant_guide.suggest_next(
+            memory=self.memory,
+            pending_command=pending_command,
+            active_goal=active_goal,
+            limit=3,
+        )
+        goal_label = active_goal or "none"
         self.context.set(
             last_command=last_command,
             last_status=last_status,
+            goal=goal_label,
             pending=pending_label,
             recent=recent,
             suggestions=suggestions,

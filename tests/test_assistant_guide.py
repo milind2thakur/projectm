@@ -38,3 +38,18 @@ def test_suggest_next_after_system_info_success(tmp_path) -> None:
 
     assert suggestions[0] == "summarize system health"
     assert "list windows" in suggestions
+
+
+def test_suggest_next_prefers_goal_actions_when_goal_is_active(tmp_path) -> None:
+    guide = AssistantGuide()
+    memory = MemoryEngine(db_path=tmp_path / "memory.db")
+
+    suggestions = guide.suggest_next(
+        memory=memory,
+        pending_command=None,
+        active_goal="Finish coding workflow",
+        limit=3,
+    )
+
+    assert suggestions[0] == "goal status"
+    assert "open coding workspace" in suggestions

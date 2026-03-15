@@ -33,7 +33,8 @@ Users issue natural-language commands (text or voice). Project M interprets inte
 - Workflow templates (`list workflows`, `run workflow <name>`)
 - Telemetry JSONL event logging for demo traces
 - Context-aware "next action" suggestions in terminal and GUI context panel
-- Terminal meta commands: `help`, `history [n]`, `voice`, `ptt`, `resume`, and `next`
+- Goal sessions (`goal <text>`, `goal status`, `goal clear`) with progress summaries
+- Terminal meta commands: `help`, `history [n]`, `voice`, `ptt`, `resume`, `next`, and `goal`
 
 ## Folder Structure
 
@@ -97,6 +98,9 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - `voice` (terminal mode)
 - `next` (show AI-suggested next actions)
 - `resume` (re-run last task)
+- `goal finish desktop demo` (set active goal)
+- `goal status` (goal progress summary)
+- `goal clear` (clear active goal)
 - `help`
 - `history 10`
 
@@ -122,6 +126,7 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - Context-aware next-action guidance
 - Workflow-first user journeys
 - Demo telemetry and observability
+- Goal-driven task sessions
 
 ## Safety Note
 
