@@ -30,6 +30,7 @@ def print_terminal_help() -> None:
     print("  help                 Show this help text")
     print("  history [n]          Show the most recent n commands (default: 5)")
     print("  voice                Capture voice command from microphone")
+    print("  ptt                  Alias for voice capture")
     print("  confirm              Approve pending sensitive action")
     print("  deny                 Reject pending sensitive action")
     print("  exit | quit          Exit Project M")
@@ -69,6 +70,8 @@ def run_terminal_mode(
     stt: SpeechToText | None = None,
     tts: TextToSpeech | None = None,
     voice_enabled: bool = True,
+    voice_capture_seconds: int = 4,
+    voice_capture_retries: int = 1,
 ) -> None:
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
@@ -120,15 +123,21 @@ def run_terminal_mode(
             print_terminal_history(memory, limit=limit)
             continue
 
-        if user_text.lower() == "voice":
+        if user_text.lower() in {"voice", "ptt"}:
             if not voice_enabled:
                 print("[WARN] Voice input is disabled in settings.")
                 continue
             if stt is None:
                 print("[WARN] Speech-to-text module not available.")
                 continue
-            print("Listening...")
-            stt_result = stt.transcribe_from_microphone()
+            print(
+                f"Listening... ({max(1, voice_capture_seconds)}s, "
+                f"up to {max(1, voice_capture_retries)} attempt(s))"
+            )
+            stt_result = stt.transcribe_from_microphone(
+                seconds=voice_capture_seconds,
+                retries=voice_capture_retries,
+            )
             if stt_result.get("status") != "success":
                 print(f"[WARN] {stt_result.get('message', 'Voice transcription failed.')}")
                 continue
@@ -184,7 +193,14 @@ def main() -> None:
     permission_manager = PermissionManager(tool_permissions=router.tool_permissions())
     sandbox = SandboxRunner()
     voice_enabled = bool(settings.get("voice_enabled", True))
-    stt = SpeechToText(model_name=str(settings.get("stt_model", "base")))
+    voice_capture_seconds = int(settings.get("voice_capture_seconds", 4))
+    voice_capture_retries = int(settings.get("voice_capture_retries", 1))
+    voice_push_to_talk_key = str(settings.get("voice_push_to_talk_key", "F8"))
+    stt = SpeechToText(
+        model_name=str(settings.get("stt_model", "base")),
+        capture_seconds=voice_capture_seconds,
+        capture_retries=voice_capture_retries,
+    )
     tts = TextToSpeech()
 
     try:
@@ -198,6 +214,9 @@ def main() -> None:
             stt=stt,
             tts=tts,
             voice_enabled=voice_enabled,
+            voice_capture_seconds=voice_capture_seconds,
+            voice_capture_retries=voice_capture_retries,
+            voice_push_to_talk_key=voice_push_to_talk_key,
         )
         app.run()
     except tk.TclError as exc:
@@ -214,6 +233,8 @@ def main() -> None:
             stt=stt,
             tts=tts,
             voice_enabled=voice_enabled,
+            voice_capture_seconds=voice_capture_seconds,
+            voice_capture_retries=voice_capture_retries,
         )
 
 

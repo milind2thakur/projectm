@@ -34,6 +34,9 @@ class OrbWindow:
         stt: SpeechToText | None = None,
         tts: TextToSpeech | None = None,
         voice_enabled: bool = True,
+        voice_capture_seconds: int = 4,
+        voice_capture_retries: int = 1,
+        voice_push_to_talk_key: str = "F8",
     ) -> None:
         self.interpreter = interpreter
         self.router = router
@@ -44,6 +47,10 @@ class OrbWindow:
         self.stt = stt
         self.tts = tts
         self.voice_enabled = voice_enabled
+        self.voice_capture_seconds = max(1, voice_capture_seconds)
+        self.voice_capture_retries = max(1, voice_capture_retries)
+        self.voice_push_to_talk_key = voice_push_to_talk_key
+        self._voice_capture_active = False
 
         self.root = tk.Tk()
         self.root.title("Project M")
@@ -64,6 +71,7 @@ class OrbWindow:
 
         self.panel.focus()
         self._set_state("idle", f"Project M ready ({self.interpreter.mode} mode).")
+        self._bind_push_to_talk_key()
 
     def _center_window(self, width: int, height: int) -> None:
         self.root.update_idletasks()
@@ -104,25 +112,39 @@ class OrbWindow:
         if self.stt is None:
             self._set_state("idle", "[WARN] Speech-to-text module not available.")
             return
-        self._set_state("listening", "Listening for voice input...")
+        if self._voice_capture_active:
+            self._set_state("idle", "[WARN] Voice capture is already in progress.")
+            return
+
+        self._voice_capture_active = True
+        self._set_state(
+            "listening",
+            f"Listening for voice input ({self.voice_capture_seconds}s, up to {self.voice_capture_retries} attempt(s))...",
+        )
         self.root.update_idletasks()
         Thread(target=self._run_voice_capture, daemon=True).start()
 
     def _run_voice_capture(self) -> None:
-        result = self.stt.transcribe_from_microphone()
-        status = result.get("status")
-        if status != "success":
-            message = str(result.get("message", "Voice transcription failed."))
-            self.root.after(0, lambda: self._set_state("idle", f"[WARN] {message}"))
-            return
+        try:
+            result = self.stt.transcribe_from_microphone(
+                seconds=self.voice_capture_seconds,
+                retries=self.voice_capture_retries,
+            )
+            status = result.get("status")
+            if status != "success":
+                message = str(result.get("message", "Voice transcription failed."))
+                self.root.after(0, lambda: self._set_state("idle", f"[WARN] {message}"))
+                return
 
-        text = str(result.get("text", "")).strip()
-        if not text:
-            self.root.after(0, lambda: self._set_state("idle", "[WARN] No speech detected."))
-            return
+            text = str(result.get("text", "")).strip()
+            if not text:
+                self.root.after(0, lambda: self._set_state("idle", "[WARN] No speech detected."))
+                return
 
-        self.root.after(0, lambda: self._set_state("thinking", f'Heard: "{text}"'))
-        self._run_command_in_background(text)
+            self.root.after(0, lambda: self._set_state("thinking", f'Heard: "{text}"'))
+            self._run_command_in_background(text)
+        finally:
+            self._voice_capture_active = False
 
     def _run_command_in_background(self, text: str) -> None:
         command = self.interpreter.interpret(text)
@@ -180,6 +202,17 @@ class OrbWindow:
         self._set_state("idle", f"{prefix} {message}")
         if self.tts is not None and self.voice_enabled:
             Thread(target=self.tts.speak, args=(message,), daemon=True).start()
+
+    def _bind_push_to_talk_key(self) -> None:
+        if not self.voice_enabled:
+            return
+        key_name = str(self.voice_push_to_talk_key).strip()
+        if not key_name:
+            return
+        self.root.bind(f"<{key_name}>", self._on_push_to_talk_key)
+
+    def _on_push_to_talk_key(self, _event: tk.Event) -> None:
+        self.handle_voice_input()
 
     def run(self) -> None:
         self.root.mainloop()

@@ -6,6 +6,9 @@ confirmation_required_tools:
   - install_package
 voice_enabled: true
 stt_model: base
+voice_capture_seconds: 4
+voice_capture_retries: 2
+voice_push_to_talk_key: F8
 default_search_root: ~
 allowed_apps:
   - firefox
