@@ -12,3 +12,10 @@ def test_unknown_tool_returns_error() -> None:
     router = ToolRouter()
     result = router.route({"tool": "does_not_exist", "args": {}})
     assert result["status"] == "error"
+
+
+def test_router_exposes_tool_metadata_lists() -> None:
+    router = ToolRouter()
+    assert "install_package" in router.list_tools()
+    assert "install_package" in router.tools_requiring_confirmation()
+    assert router.tool_permissions()["open_app"] == "read"

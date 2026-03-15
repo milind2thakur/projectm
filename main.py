@@ -161,19 +161,23 @@ def run_terminal_mode(
 def main() -> None:
     settings = load_settings(Path("config/settings.yaml"))
 
-    interpreter = CommandInterpreter(
-        model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
-    )
     router = ToolRouter(
         allowed_apps=settings.get("allowed_apps"),
         search_root=settings.get("default_search_root"),
     )
+    interpreter = CommandInterpreter(
+        model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
+    )
+    interpreter.allowed_tools = router.list_tools()
     memory = MemoryEngine()
+    confirmation_tools = settings.get("confirmation_required_tools")
+    if confirmation_tools is None:
+        confirmation_tools = router.tools_requiring_confirmation()
     confirmation_manager = ConfirmationManager(
-        required_tools=list(settings.get("confirmation_required_tools", ["install_package"])),
+        required_tools=list(confirmation_tools),
         enabled=bool(settings.get("confirmation_enabled", True)),
     )
-    permission_manager = PermissionManager()
+    permission_manager = PermissionManager(tool_permissions=router.tool_permissions())
     sandbox = SandboxRunner()
     voice_enabled = bool(settings.get("voice_enabled", True))
     stt = SpeechToText(model_name=str(settings.get("stt_model", "base")))
