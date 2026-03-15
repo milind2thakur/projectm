@@ -13,15 +13,15 @@ def test_print_terminal_help_includes_core_commands(capsys) -> None:
     assert "exit | quit" in output
 
 
-def test_print_terminal_history_empty(capsys) -> None:
-    memory = MemoryEngine()
+def test_print_terminal_history_empty(capsys, tmp_path) -> None:
+    memory = MemoryEngine(db_path=tmp_path / "memory.db")
     print_terminal_history(memory, limit=5)
     output = capsys.readouterr().out.strip()
     assert output == "No command history yet."
 
 
-def test_print_terminal_history_with_entries(capsys) -> None:
-    memory = MemoryEngine()
+def test_print_terminal_history_with_entries(capsys, tmp_path) -> None:
+    memory = MemoryEngine(db_path=tmp_path / "memory.db")
     memory.add_entry(
         {"raw_command": "show cpu usage", "tool": "system_info", "args": {"metric": "cpu"}},
         {"status": "success", "tool": "system_info", "message": "Retrieved cpu usage."},

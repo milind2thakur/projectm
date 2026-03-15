@@ -1,5 +1,6 @@
 app_name: Project M
 mode: fallback
+memory_db_path: data/projectm_memory.db
 confirmation_enabled: true
 confirmation_required_tools:
   - install_package

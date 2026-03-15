@@ -169,7 +169,7 @@ def main() -> None:
         model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
     )
     interpreter.allowed_tools = router.list_tools()
-    memory = MemoryEngine()
+    memory = MemoryEngine(db_path=str(settings.get("memory_db_path", "data/projectm_memory.db")))
     confirmation_tools = settings.get("confirmation_required_tools")
     if confirmation_tools is None:
         confirmation_tools = router.tools_requiring_confirmation()
