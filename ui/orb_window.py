@@ -9,6 +9,7 @@ from typing import Any
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
 from ai_core.tool_router import ToolRouter
+from security.confirmation_manager import ConfirmationManager
 from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
 from voice.speech_to_text import SpeechToText
@@ -27,6 +28,7 @@ class OrbWindow:
         interpreter: CommandInterpreter,
         router: ToolRouter,
         memory: MemoryEngine,
+        confirmation_manager: ConfirmationManager,
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
         stt: SpeechToText | None = None,
@@ -36,6 +38,7 @@ class OrbWindow:
         self.interpreter = interpreter
         self.router = router
         self.memory = memory
+        self.confirmation_manager = confirmation_manager
         self.permission_manager = permission_manager
         self.sandbox = sandbox
         self.stt = stt
@@ -82,6 +85,14 @@ class OrbWindow:
             self.root.after(150, self.root.destroy)
             return
 
+        if normalized in {"confirm", "yes"}:
+            self._confirm_pending_action()
+            return
+
+        if normalized in {"deny", "cancel", "no"}:
+            self._deny_pending_action()
+            return
+
         self._set_state("thinking", "Thinking...")
         self.root.update_idletasks()
         Thread(target=self._run_command_in_background, args=(text,), daemon=True).start()
@@ -117,6 +128,16 @@ class OrbWindow:
         command = self.interpreter.interpret(text)
         tool_name = command.get("tool", "unknown")
 
+        if self.confirmation_manager.requires_confirmation(str(tool_name)):
+            self.confirmation_manager.queue(command)
+            result = {
+                "status": "warning",
+                "tool": str(tool_name),
+                "message": "Confirmation required. Type 'confirm' to proceed or 'deny' to cancel.",
+            }
+            self.root.after(0, lambda: self._finalize_command(command, result))
+            return
+
         if not self.permission_manager.can_execute(tool_name, granted_level="read"):
             result = {
                 "status": "error",
@@ -127,6 +148,26 @@ class OrbWindow:
             self.root.after(0, lambda: self._set_state("executing", f"Executing {tool_name}..."))
             result = self.sandbox.run(lambda: self.router.route(command))
 
+        self.root.after(0, lambda: self._finalize_command(command, result))
+
+    def _confirm_pending_action(self) -> None:
+        command = self.confirmation_manager.confirm()
+        if command is None:
+            self._set_state("idle", "[WARN] No pending action to confirm.")
+            return
+        self._set_state("executing", f"Executing {command.get('tool', 'action')}...")
+        Thread(target=self._run_confirmed_command, args=(command,), daemon=True).start()
+
+    def _deny_pending_action(self) -> None:
+        command = self.confirmation_manager.deny()
+        if command is None:
+            self._set_state("idle", "[WARN] No pending action to deny.")
+            return
+        tool_name = str(command.get("tool", "unknown"))
+        self._set_state("idle", f"[WARN] Pending action '{tool_name}' cancelled.")
+
+    def _run_confirmed_command(self, command: dict[str, Any]) -> None:
+        result = self.sandbox.run(lambda: self.router.route(command))
         self.root.after(0, lambda: self._finalize_command(command, result))
 
     def _finalize_command(self, command: dict[str, Any], result: dict[str, Any]) -> None:

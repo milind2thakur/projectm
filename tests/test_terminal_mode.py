@@ -8,6 +8,8 @@ def test_print_terminal_help_includes_core_commands(capsys) -> None:
     assert "help" in output
     assert "history [n]" in output
     assert "voice" in output
+    assert "confirm" in output
+    assert "deny" in output
     assert "exit | quit" in output
 
 

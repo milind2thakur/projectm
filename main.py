@@ -10,6 +10,7 @@ import yaml
 
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
+from security.confirmation_manager import ConfirmationManager
 from ai_core.tool_router import ToolRouter
 from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
@@ -29,6 +30,8 @@ def print_terminal_help() -> None:
     print("  help                 Show this help text")
     print("  history [n]          Show the most recent n commands (default: 5)")
     print("  voice                Capture voice command from microphone")
+    print("  confirm              Approve pending sensitive action")
+    print("  deny                 Reject pending sensitive action")
     print("  exit | quit          Exit Project M")
     print("  open firefox         Open an allowed app")
     print("  open downloads       Open an allowed folder")
@@ -56,6 +59,7 @@ def run_terminal_mode(
     interpreter: CommandInterpreter,
     router: ToolRouter,
     memory: MemoryEngine,
+    confirmation_manager: ConfirmationManager,
     permission_manager: PermissionManager,
     sandbox: SandboxRunner,
     stt: SpeechToText | None = None,
@@ -77,6 +81,28 @@ def run_terminal_mode(
         if user_text.lower() in {"exit", "quit"}:
             print("Exiting Project M.")
             break
+
+        if user_text.lower() in {"confirm", "yes"}:
+            command = confirmation_manager.confirm()
+            if command is None:
+                print("[WARN] No pending action to confirm.")
+                continue
+            result = sandbox.run(lambda: router.route(command))
+            memory.add_entry(command, result)
+            prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+            spoken_text = format_status_message(result)
+            print(f"{prefix} {spoken_text}")
+            if voice_enabled and tts is not None:
+                tts.speak(spoken_text)
+            continue
+
+        if user_text.lower() in {"deny", "cancel", "no"}:
+            command = confirmation_manager.deny()
+            if command is None:
+                print("[WARN] No pending action to deny.")
+                continue
+            print(f"[WARN] Pending action '{command.get('tool', 'unknown')}' cancelled.")
+            continue
 
         if user_text.lower() in {"help", "?"}:
             print_terminal_help()
@@ -110,6 +136,11 @@ def run_terminal_mode(
 
         command = interpreter.interpret(user_text)
         tool_name = str(command.get("tool", "unknown"))
+        if confirmation_manager.requires_confirmation(tool_name):
+            confirmation_manager.queue(command)
+            print("[WARN] Confirmation required. Type 'confirm' to proceed or 'deny' to cancel.")
+            continue
+
         if not permission_manager.can_execute(tool_name, granted_level="read"):
             result: dict[str, Any] = {
                 "status": "error",
@@ -138,6 +169,10 @@ def main() -> None:
         search_root=settings.get("default_search_root"),
     )
     memory = MemoryEngine()
+    confirmation_manager = ConfirmationManager(
+        required_tools=list(settings.get("confirmation_required_tools", ["install_package"])),
+        enabled=bool(settings.get("confirmation_enabled", True)),
+    )
     permission_manager = PermissionManager()
     sandbox = SandboxRunner()
     voice_enabled = bool(settings.get("voice_enabled", True))
@@ -149,6 +184,7 @@ def main() -> None:
             interpreter=interpreter,
             router=router,
             memory=memory,
+            confirmation_manager=confirmation_manager,
             permission_manager=permission_manager,
             sandbox=sandbox,
             stt=stt,
@@ -164,6 +200,7 @@ def main() -> None:
             interpreter,
             router,
             memory,
+            confirmation_manager,
             permission_manager,
             sandbox,
             stt=stt,

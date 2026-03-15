@@ -1,5 +1,8 @@
 app_name: Project M
 mode: fallback
+confirmation_enabled: true
+confirmation_required_tools:
+  - install_package
 voice_enabled: true
 stt_model: base
 default_search_root: ~
@@ -10,3 +13,25 @@ allowed_apps:
   - gnome-terminal
   - x-terminal-emulator
   - code
+  - alacritty
+  - kitty
+  - konsole
+  - xfce4-terminal
+  - xterm
+  - brave-browser
+  - vivaldi
+  - opera
+  - thunar
+  - nautilus
+  - dolphin
+  - nemo
+  - vlc
+  - mpv
+  - libreoffice
+  - gedit
+  - mousepad
+  - kate
+  - obsidian
+  - telegram-desktop
+  - discord
+  - spotify
