@@ -16,7 +16,17 @@ class CommandInterpreter:
 
     def __init__(self, model_path: str | None = None) -> None:
         self.model_path = model_path
-        self.allowed_tools = ["open_app", "open_folder", "system_info", "install_package", "file_search"]
+        self.allowed_tools = [
+            "open_app",
+            "open_folder",
+            "system_info",
+            "install_package",
+            "file_search",
+            "list_windows",
+            "focus_window",
+            "minimize_window",
+            "close_window",
+        ]
         self._llm = self._init_optional_llm()
         self.mode = "model" if self._llm is not None else "fallback"
 
@@ -92,5 +102,29 @@ class CommandInterpreter:
         if text.startswith("find "):
             query = text.removeprefix("find ").strip()
             return {"tool": "file_search", "args": {"query": query}, "raw_command": user_text}
+
+        if text in {"list windows", "show windows", "what windows are open"}:
+            return {"tool": "list_windows", "args": {}, "raw_command": user_text}
+
+        if text.startswith("focus window "):
+            target = text.removeprefix("focus window ").strip()
+            return {"tool": "focus_window", "args": {"target": target}, "raw_command": user_text}
+        if text.startswith("focus "):
+            target = text.removeprefix("focus ").strip()
+            return {"tool": "focus_window", "args": {"target": target}, "raw_command": user_text}
+
+        if text.startswith("minimize window "):
+            target = text.removeprefix("minimize window ").strip()
+            return {"tool": "minimize_window", "args": {"target": target}, "raw_command": user_text}
+        if text.startswith("minimize "):
+            target = text.removeprefix("minimize ").strip()
+            return {"tool": "minimize_window", "args": {"target": target}, "raw_command": user_text}
+
+        if text.startswith("close window "):
+            target = text.removeprefix("close window ").strip()
+            return {"tool": "close_window", "args": {"target": target}, "raw_command": user_text}
+        if text.startswith("close "):
+            target = text.removeprefix("close ").strip()
+            return {"tool": "close_window", "args": {"target": target}, "raw_command": user_text}
 
         return {"tool": "unknown", "args": {"text": text}, "raw_command": user_text}

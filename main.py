@@ -40,6 +40,10 @@ def print_terminal_help() -> None:
     print("  show storage usage   Show storage usage")
     print("  find <query>         Search file names under configured root")
     print("  install <package>    Show install preview command")
+    print("  list windows         List open windows")
+    print("  focus <title>        Focus window by title")
+    print("  minimize <title>     Minimize window by title")
+    print("  close <title>        Close window by title (requires confirmation)")
 
 
 def print_terminal_history(memory: MemoryEngine, limit: int = 5) -> None:

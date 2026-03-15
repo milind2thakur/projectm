@@ -17,5 +17,7 @@ def test_unknown_tool_returns_error() -> None:
 def test_router_exposes_tool_metadata_lists() -> None:
     router = ToolRouter()
     assert "install_package" in router.list_tools()
+    assert "list_windows" in router.list_tools()
     assert "install_package" in router.tools_requiring_confirmation()
+    assert "close_window" in router.tools_requiring_confirmation()
     assert router.tool_permissions()["open_app"] == "read"

@@ -22,6 +22,12 @@ def format_status_message(result: dict[str, Any]) -> str:
             return f"{message} Showing {len(results)} result(s)."
         return message
 
+    if tool == "list_windows":
+        windows = data.get("windows")
+        if isinstance(windows, list):
+            return f"{message} Showing {len(windows)} window(s)."
+        return message
+
     if tool == "system_info":
         if "cpu_percent" in data:
             return f"CPU usage: {data['cpu_percent']}%"

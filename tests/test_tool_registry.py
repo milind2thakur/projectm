@@ -26,5 +26,6 @@ def test_registry_unknown_tool_returns_error() -> None:
 def test_default_registry_exposes_policy_metadata() -> None:
     registry = build_default_registry()
     assert "install_package" in registry.tools_requiring_confirmation()
+    assert "close_window" in registry.tools_requiring_confirmation()
     permissions = registry.tool_permissions()
     assert permissions["open_app"] == "read"

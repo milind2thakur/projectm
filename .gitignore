@@ -7,4 +7,5 @@ models/
 *.gguf
 *.bin
 *.log
+data/*.db
 .DS_Store

@@ -11,6 +11,7 @@ from tools.install_package import prepare_install
 from tools.open_app import open_app
 from tools.open_folder import open_folder
 from tools.system_info import cpu_usage, memory_usage, storage_usage
+from tools.window_control import close_window, focus_window, list_windows, minimize_window
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,18 @@ def build_default_registry(allowed_apps: list[str] | None = None, search_root: s
     def _run_file_search(args: dict[str, Any]) -> dict[str, Any]:
         return search_files(str(args.get("query", "")), root=root)
 
+    def _run_list_windows(_args: dict[str, Any]) -> dict[str, Any]:
+        return list_windows()
+
+    def _run_focus_window(args: dict[str, Any]) -> dict[str, Any]:
+        return focus_window(str(args.get("target", "")))
+
+    def _run_minimize_window(args: dict[str, Any]) -> dict[str, Any]:
+        return minimize_window(str(args.get("target", "")))
+
+    def _run_close_window(args: dict[str, Any]) -> dict[str, Any]:
+        return close_window(str(args.get("target", "")))
+
     registry.register(
         ToolSpec(
             name="open_app",
@@ -122,6 +135,39 @@ def build_default_registry(allowed_apps: list[str] | None = None, search_root: s
             description="Search files by filename under configured root.",
             required_permission="read",
             handler=_run_file_search,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="list_windows",
+            description="List currently open windows.",
+            required_permission="read",
+            handler=_run_list_windows,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="focus_window",
+            description="Focus a window by title query.",
+            required_permission="read",
+            handler=_run_focus_window,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="minimize_window",
+            description="Minimize a window by title query.",
+            required_permission="read",
+            handler=_run_minimize_window,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="close_window",
+            description="Close a window by title query.",
+            required_permission="read",
+            requires_confirmation=True,
+            handler=_run_close_window,
         )
     )
     return registry
