@@ -6,7 +6,7 @@ from __future__ import annotations
 class PermissionManager:
     """Basic permission gating for tool execution.
 
-    V1 defaults to `read`, and only package installation previews require `admin`.
+    V1 defaults to `read`. Preview-only install commands are also `read`.
     """
 
     LEVEL_ORDER = {"read": 1, "write": 2, "admin": 3}
@@ -15,7 +15,7 @@ class PermissionManager:
         "open_folder": "read",
         "file_search": "read",
         "system_info": "read",
-        "install_package": "admin",
+        "install_package": "read",
         "unknown": "read",
     }
 

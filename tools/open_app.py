@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Iterable
 
 ALLOWED_APPS = {
     "firefox",
@@ -15,9 +16,10 @@ ALLOWED_APPS = {
 }
 
 
-def open_app(app_name: str) -> dict[str, object]:
+def open_app(app_name: str, allowed_apps: Iterable[str] | None = None) -> dict[str, object]:
     app = app_name.strip().lower()
-    if app not in ALLOWED_APPS:
+    allowlist = {item.strip().lower() for item in allowed_apps} if allowed_apps is not None else ALLOWED_APPS
+    if app not in allowlist:
         return {"status": "error", "tool": "open_app", "message": f"App '{app}' is not in the allowlist."}
 
     binary = shutil.which(app)

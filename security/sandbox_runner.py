@@ -13,4 +13,11 @@ class SandboxRunner:
     """
 
     def run(self, func: Callable[[], dict[str, Any]]) -> dict[str, Any]:
-        return func()
+        try:
+            return func()
+        except Exception as exc:
+            return {
+                "status": "error",
+                "tool": "sandbox",
+                "message": f"Tool execution failed: {exc}",
+            }

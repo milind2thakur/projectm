@@ -25,7 +25,10 @@ def main() -> None:
     interpreter = CommandInterpreter(
         model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
     )
-    router = ToolRouter()
+    router = ToolRouter(
+        allowed_apps=settings.get("allowed_apps"),
+        search_root=settings.get("default_search_root"),
+    )
     memory = MemoryEngine()
     permission_manager = PermissionManager()
     sandbox = SandboxRunner()

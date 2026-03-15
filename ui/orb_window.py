@@ -1,8 +1,10 @@
-"""Desktop orb window for Project M (Tkinter V1)."""
+﻿"""Desktop orb window for Project M (Tkinter V1)."""
 
 from __future__ import annotations
 
 import tkinter as tk
+from threading import Thread
+from typing import Any
 
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
@@ -78,7 +80,9 @@ class OrbWindow:
 
         self._set_state("thinking", "Thinking...")
         self.root.update_idletasks()
+        Thread(target=self._run_command_in_background, args=(text,), daemon=True).start()
 
+    def _run_command_in_background(self, text: str) -> None:
         command = self.interpreter.interpret(text)
         tool_name = command.get("tool", "unknown")
 
@@ -89,15 +93,17 @@ class OrbWindow:
                 "message": "Permission denied for current granted level.",
             }
         else:
-            self._set_state("executing", f"Executing {tool_name}...")
-            self.root.update_idletasks()
+            self.root.after(0, lambda: self._set_state("executing", f"Executing {tool_name}..."))
             result = self.sandbox.run(lambda: self.router.route(command))
 
+        self.root.after(0, lambda: self._finalize_command(command, result))
+
+    def _finalize_command(self, command: dict[str, Any], result: dict[str, Any]) -> None:
         self.memory.add_entry(command, result)
 
         status = result.get("status", "error")
         message = result.get("message", "No message")
-        prefix = "✅" if status == "success" else "⚠️"
+        prefix = "[OK]" if status == "success" else "[WARN]"
 
         data = result.get("data")
         if isinstance(data, dict) and "command_preview" in data:
