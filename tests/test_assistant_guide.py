@@ -51,5 +51,22 @@ def test_suggest_next_prefers_goal_actions_when_goal_is_active(tmp_path) -> None
         limit=3,
     )
 
-    assert suggestions[0] == "goal status"
+    assert suggestions[0] == "plan goal"
+    assert "goal status" in suggestions
     assert "open coding workspace" in suggestions
+
+
+def test_suggest_next_prefers_plan_run_when_plan_exists(tmp_path) -> None:
+    guide = AssistantGuide()
+    memory = MemoryEngine(db_path=tmp_path / "memory.db")
+
+    suggestions = guide.suggest_next(
+        memory=memory,
+        pending_command=None,
+        active_goal="Finish coding workflow",
+        has_active_plan=True,
+        limit=3,
+    )
+
+    assert suggestions[0] == "plan run"
+    assert "plan show" in suggestions

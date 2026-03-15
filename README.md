@@ -31,6 +31,7 @@ Users issue natural-language commands (text or voice). Project M interprets inte
 - Push-to-talk hotkey support for voice capture
 - Window control tools (`list`, `focus`, `minimize`, `close`)
 - Workflow templates (`list workflows`, `run workflow <name>`)
+- Adaptive planner (`plan goal`, `plan show`, `plan run`, `plan clear`)
 - Telemetry JSONL event logging for demo traces
 - Context-aware "next action" suggestions in terminal and GUI context panel
 - Goal sessions (`goal <text>`, `goal status`, `goal clear`) with progress summaries
@@ -101,6 +102,10 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - `goal finish desktop demo` (set active goal)
 - `goal status` (goal progress summary)
 - `goal clear` (clear active goal)
+- `plan goal` (generate plan from active goal)
+- `plan show` (show plan progress and next steps)
+- `plan run` (execute remaining plan steps)
+- `plan clear` (clear active plan)
 - `help`
 - `history 10`
 
@@ -127,6 +132,7 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - Workflow-first user journeys
 - Demo telemetry and observability
 - Goal-driven task sessions
+- Adaptive goal-to-plan execution
 
 ## Safety Note
 

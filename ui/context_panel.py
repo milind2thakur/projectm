@@ -10,7 +10,9 @@ class ContextPanel:
 
     def __init__(self, parent: tk.Widget) -> None:
         self.frame = tk.Frame(parent, bg="#090b10")
-        self.var = tk.StringVar(value="Last: -\nStatus: -\nGoal: none\nPending: none\nRecent: -\nNext: -")
+        self.var = tk.StringVar(
+            value="Last: -\nStatus: -\nGoal: none\nPlan: none\nPending: none\nRecent: -\nNext: -"
+        )
         self.label = tk.Label(
             self.frame,
             textvariable=self.var,
@@ -28,6 +30,7 @@ class ContextPanel:
         last_command: str,
         last_status: str,
         goal: str,
+        plan: str,
         pending: str,
         recent: list[str],
         suggestions: list[str],
@@ -38,6 +41,7 @@ class ContextPanel:
             f"Last: {last_command or '-'}\n"
             f"Status: {last_status or '-'}\n"
             f"Goal: {goal or 'none'}\n"
+            f"Plan: {plan or 'none'}\n"
             f"Pending: {pending or 'none'}\n"
             f"Recent: {recent_text}\n"
             f"Next: {suggestions_text}"

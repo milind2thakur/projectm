@@ -1,3 +1,4 @@
+from ai_core.adaptive_planner import AdaptivePlanner
 from ai_core.assistant_guide import AssistantGuide
 from ai_core.goal_session import GoalSessionManager
 from ai_core.memory_engine import MemoryEngine
@@ -19,6 +20,10 @@ def test_print_terminal_help_includes_core_commands(capsys) -> None:
     assert "goal <text>" in output
     assert "goal status" in output
     assert "goal clear" in output
+    assert "plan goal" in output
+    assert "plan show" in output
+    assert "plan run" in output
+    assert "plan clear" in output
     assert "list windows" in output
     assert "list workflows" in output
     assert "exit | quit" in output
@@ -51,10 +56,18 @@ def test_print_terminal_history_with_entries(capsys, tmp_path) -> None:
 def test_print_terminal_suggestions_empty_memory(capsys, tmp_path) -> None:
     memory = MemoryEngine(db_path=tmp_path / "memory.db")
     goal_session = GoalSessionManager(memory)
+    planner = AdaptivePlanner(memory)
     guide = AssistantGuide()
     confirmation_manager = ConfirmationManager(required_tools=["install_package"], enabled=True)
 
-    suggestions = print_terminal_suggestions(guide, memory, goal_session, confirmation_manager, limit=3)
+    suggestions = print_terminal_suggestions(
+        guide,
+        memory,
+        goal_session,
+        planner,
+        confirmation_manager,
+        limit=3,
+    )
     output = capsys.readouterr().out
 
     assert "Next: " in output

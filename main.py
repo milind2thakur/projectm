@@ -8,10 +8,12 @@ from typing import Any
 
 import yaml
 
+from ai_core.adaptive_planner import AdaptivePlanner
 from ai_core.assistant_guide import AssistantGuide
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.goal_session import GoalSessionManager
 from ai_core.memory_engine import MemoryEngine
+from ai_core.plan_runner import run_plan_steps
 from ai_core.telemetry_logger import TelemetryLogger
 from ai_core.workflow_runner import run_workflow_template
 from ai_core.workflow_templates import WorkflowTemplateEngine
@@ -43,6 +45,10 @@ def print_terminal_help() -> None:
     print("  goal <text>          Set active goal for guided execution")
     print("  goal status          Show active goal progress")
     print("  goal clear           Clear active goal")
+    print("  plan goal            Generate a plan from active goal")
+    print("  plan show            Show active plan progress")
+    print("  plan run             Execute remaining plan steps")
+    print("  plan clear           Clear active plan")
     print("  exit | quit          Exit Project M")
     print("  open firefox         Open an allowed app")
     print("  open downloads       Open an allowed folder")
@@ -76,6 +82,7 @@ def print_terminal_suggestions(
     assistant_guide: AssistantGuide,
     memory: MemoryEngine,
     goal_session: GoalSessionManager,
+    planner: AdaptivePlanner,
     confirmation_manager: ConfirmationManager,
     limit: int = 3,
 ) -> list[str]:
@@ -85,6 +92,7 @@ def print_terminal_suggestions(
         memory,
         pending_command=pending_command,
         active_goal=goal_session.get_active_goal(),
+        has_active_plan=planner.has_active_plan(),
         limit=limit,
     )
     if suggestions:
@@ -107,6 +115,19 @@ def print_goal_status(goal_session: GoalSessionManager) -> dict[str, Any]:
     return status
 
 
+def print_plan_status(planner: AdaptivePlanner) -> dict[str, Any]:
+    status = planner.status_report()
+    if status.get("status") != "success":
+        print(f"[WARN] {status.get('message', 'No active plan.')}")
+        return status
+
+    print(f"[OK] {status.get('message', '')}")
+    next_commands = status.get("next_commands", [])
+    if isinstance(next_commands, list) and next_commands:
+        print(f"Plan Next: {', '.join(str(item) for item in next_commands)}")
+    return status
+
+
 def run_terminal_mode(
     interpreter: CommandInterpreter,
     router: ToolRouter,
@@ -117,6 +138,7 @@ def run_terminal_mode(
     sandbox: SandboxRunner,
     assistant_guide: AssistantGuide,
     goal_session: GoalSessionManager,
+    planner: AdaptivePlanner,
     telemetry: TelemetryLogger | None = None,
     stt: SpeechToText | None = None,
     tts: TextToSpeech | None = None,
@@ -129,7 +151,7 @@ def run_terminal_mode(
 
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
-    print_terminal_suggestions(assistant_guide, memory, goal_session, confirmation_manager)
+    print_terminal_suggestions(assistant_guide, memory, goal_session, planner, confirmation_manager)
 
     def _print_result(command: dict[str, Any], result: dict[str, Any]) -> None:
         memory.add_entry(command, result)
@@ -148,12 +170,45 @@ def run_terminal_mode(
         print(f"{prefix} {spoken_text}")
         if voice_enabled and tts is not None:
             tts.speak(spoken_text)
-        suggestions = print_terminal_suggestions(assistant_guide, memory, goal_session, confirmation_manager)
+        suggestions = print_terminal_suggestions(assistant_guide, memory, goal_session, planner, confirmation_manager)
         if telemetry is not None:
             telemetry.log_event(
                 "assistant_suggestions_shown",
                 {"source": "terminal", "suggestions": suggestions},
             )
+
+    def _execute_plan_step(step_command: dict[str, Any]) -> dict[str, Any]:
+        step_tool = str(step_command.get("tool", "unknown"))
+        if confirmation_manager.requires_confirmation(step_tool):
+            return {
+                "status": "warning",
+                "tool": step_tool,
+                "message": "Skipped confirmation-required step during plan run.",
+            }
+        if not permission_manager.can_execute(step_tool, granted_level="read"):
+            return {
+                "status": "error",
+                "tool": step_tool,
+                "message": "Permission denied for current granted level.",
+            }
+        step_result = sandbox.run(lambda: router.route(step_command))
+        memory.add_entry(step_command, step_result)
+        return step_result
+
+    def _run_active_plan() -> dict[str, Any]:
+        plan = planner.get_plan()
+        if plan is None:
+            return {
+                "status": "warning",
+                "tool": "plan_run",
+                "message": "No active plan. Use: plan goal",
+            }
+        start_index = int(plan.get("next_step_index", 0))
+        result = run_plan_steps(plan, _execute_plan_step, start_index=start_index)
+        next_index = result.get("data", {}).get("next_step_index")
+        if isinstance(next_index, int):
+            planner.set_next_step_index(next_index)
+        return result
 
     while True:
         try:
@@ -229,9 +284,16 @@ def run_terminal_mode(
 
         if normalized == "goal clear":
             clear_result = goal_session.clear_goal()
+            planner.clear_plan()
             prefix = "[OK]" if clear_result.get("status") == "success" else "[WARN]"
             print(f"{prefix} {clear_result.get('message', '')}")
-            suggestions = print_terminal_suggestions(assistant_guide, memory, goal_session, confirmation_manager)
+            suggestions = print_terminal_suggestions(
+                assistant_guide,
+                memory,
+                goal_session,
+                planner,
+                confirmation_manager,
+            )
             if telemetry is not None:
                 telemetry.log_event(
                     "goal_cleared",
@@ -246,9 +308,17 @@ def run_terminal_mode(
         if normalized.startswith("goal "):
             goal_text = user_text[5:].strip()
             set_result = goal_session.set_goal(goal_text)
+            if set_result.get("status") == "success":
+                planner.clear_plan()
             prefix = "[OK]" if set_result.get("status") == "success" else "[WARN]"
             print(f"{prefix} {set_result.get('message', '')}")
-            suggestions = print_terminal_suggestions(assistant_guide, memory, goal_session, confirmation_manager)
+            suggestions = print_terminal_suggestions(
+                assistant_guide,
+                memory,
+                goal_session,
+                planner,
+                confirmation_manager,
+            )
             if telemetry is not None:
                 telemetry.log_event(
                     "goal_set",
@@ -264,8 +334,99 @@ def run_terminal_mode(
                 )
             continue
 
+        if normalized in {"plan", "plan show", "show plan"}:
+            status = print_plan_status(planner)
+            if telemetry is not None:
+                telemetry.log_event(
+                    "plan_status_requested",
+                    {
+                        "source": "terminal",
+                        "has_plan": status.get("status") == "success",
+                        "remaining_steps": int(status.get("remaining_steps", 0)),
+                    },
+                )
+            continue
+
+        if normalized in {"plan clear", "clear plan"}:
+            clear_result = planner.clear_plan()
+            prefix = "[OK]" if clear_result.get("status") == "success" else "[WARN]"
+            print(f"{prefix} {clear_result.get('message', '')}")
+            suggestions = print_terminal_suggestions(
+                assistant_guide,
+                memory,
+                goal_session,
+                planner,
+                confirmation_manager,
+            )
+            if telemetry is not None:
+                telemetry.log_event(
+                    "plan_cleared",
+                    {"source": "terminal", "status": str(clear_result.get("status", "unknown"))},
+                )
+                telemetry.log_event(
+                    "assistant_suggestions_shown",
+                    {"source": "terminal", "suggestions": suggestions},
+                )
+            continue
+
+        if normalized in {"plan goal", "plan generate", "plan create"}:
+            active_goal = goal_session.get_active_goal()
+            if not active_goal:
+                print("[WARN] No active goal. Use: goal <text>")
+                continue
+            plan_result = planner.generate_plan(active_goal)
+            prefix = "[OK]" if plan_result.get("status") == "success" else "[WARN]"
+            print(f"{prefix} {plan_result.get('message', '')}")
+            next_commands = plan_result.get("data", {}).get("next_commands", [])
+            if isinstance(next_commands, list) and next_commands:
+                print(f"Plan Next: {', '.join(str(item) for item in next_commands)}")
+            suggestions = print_terminal_suggestions(
+                assistant_guide,
+                memory,
+                goal_session,
+                planner,
+                confirmation_manager,
+            )
+            if telemetry is not None:
+                telemetry.log_event(
+                    "plan_generated",
+                    {
+                        "source": "terminal",
+                        "status": str(plan_result.get("status", "unknown")),
+                        "goal": str(active_goal),
+                        "total_steps": int(plan_result.get("data", {}).get("total_steps", 0)),
+                    },
+                )
+                telemetry.log_event(
+                    "assistant_suggestions_shown",
+                    {"source": "terminal", "suggestions": suggestions},
+                )
+            continue
+
+        if normalized in {"plan run", "run plan"}:
+            command = {"tool": "plan_run", "args": {}, "raw_command": user_text}
+            result = _run_active_plan()
+            _print_result(command, result)
+            if telemetry is not None:
+                telemetry.log_event(
+                    "plan_run",
+                    {
+                        "source": "terminal",
+                        "status": str(result.get("status", "unknown")),
+                        "completed_steps": int(result.get("data", {}).get("completed_steps", 0)),
+                        "total_steps": int(result.get("data", {}).get("total_steps", 0)),
+                    },
+                )
+            continue
+
         if normalized in {"next", "suggest", "suggestions"}:
-            suggestions = print_terminal_suggestions(assistant_guide, memory, goal_session, confirmation_manager)
+            suggestions = print_terminal_suggestions(
+                assistant_guide,
+                memory,
+                goal_session,
+                planner,
+                confirmation_manager,
+            )
             if telemetry is not None:
                 telemetry.log_event(
                     "assistant_suggestions_shown",
@@ -437,6 +598,7 @@ def main() -> None:
     memory = MemoryEngine(db_path=str(settings.get("memory_db_path", "data/projectm_memory.db")))
     assistant_guide = AssistantGuide()
     goal_session = GoalSessionManager(memory)
+    planner = AdaptivePlanner(memory)
     confirmation_tools = settings.get("confirmation_required_tools")
     if confirmation_tools is None:
         confirmation_tools = router.tools_requiring_confirmation()
@@ -479,6 +641,7 @@ def main() -> None:
             sandbox=sandbox,
             assistant_guide=assistant_guide,
             goal_session=goal_session,
+            planner=planner,
             telemetry=telemetry,
             stt=stt,
             tts=tts,
@@ -502,6 +665,7 @@ def main() -> None:
             sandbox,
             assistant_guide,
             goal_session,
+            planner,
             telemetry=telemetry,
             stt=stt,
             tts=tts,

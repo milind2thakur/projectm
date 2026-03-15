@@ -42,6 +42,14 @@ def format_status_message(result: dict[str, Any]) -> str:
             )
         return message
 
+    if tool == "plan_run":
+        if {"completed_steps", "total_steps"}.issubset(data):
+            return (
+                f"{message} "
+                f"({data['completed_steps']}/{data['total_steps']} step(s) completed)"
+            )
+        return message
+
     if tool == "system_info":
         if "cpu_percent" in data:
             return f"CPU usage: {data['cpu_percent']}%"

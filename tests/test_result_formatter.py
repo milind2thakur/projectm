@@ -32,3 +32,14 @@ def test_format_file_search_message() -> None:
         }
     )
     assert message == "Found 2 matches. Showing 2 result(s)."
+
+
+def test_format_plan_run_message() -> None:
+    message = format_status_message(
+        {
+            "tool": "plan_run",
+            "message": "Plan paused at step 3/4.",
+            "data": {"completed_steps": 2, "total_steps": 4},
+        }
+    )
+    assert message == "Plan paused at step 3/4. (2/4 step(s) completed)"

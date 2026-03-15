@@ -6,10 +6,12 @@ import tkinter as tk
 from threading import Thread
 from typing import Any
 
+from ai_core.adaptive_planner import AdaptivePlanner
 from ai_core.assistant_guide import AssistantGuide
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.goal_session import GoalSessionManager
 from ai_core.memory_engine import MemoryEngine
+from ai_core.plan_runner import run_plan_steps
 from ai_core.telemetry_logger import TelemetryLogger
 from ai_core.tool_router import ToolRouter
 from ai_core.workflow_runner import run_workflow_template
@@ -40,6 +42,7 @@ class OrbWindow:
         sandbox: SandboxRunner,
         assistant_guide: AssistantGuide,
         goal_session: GoalSessionManager,
+        planner: AdaptivePlanner,
         telemetry: TelemetryLogger | None = None,
         stt: SpeechToText | None = None,
         tts: TextToSpeech | None = None,
@@ -57,6 +60,7 @@ class OrbWindow:
         self.sandbox = sandbox
         self.assistant_guide = assistant_guide
         self.goal_session = goal_session
+        self.planner = planner
         self.telemetry = telemetry
         self.stt = stt
         self.tts = tts
@@ -141,6 +145,23 @@ class OrbWindow:
 
         if normalized.startswith("goal "):
             self._set_goal(text[5:].strip())
+            return
+
+        if normalized in {"plan", "plan show", "show plan"}:
+            self._show_plan_status()
+            return
+
+        if normalized in {"plan clear", "clear plan"}:
+            self._clear_plan()
+            return
+
+        if normalized in {"plan goal", "plan generate", "plan create"}:
+            self._generate_plan_from_goal()
+            return
+
+        if normalized in {"plan run", "run plan"}:
+            self._set_state("executing", "Running active plan...")
+            Thread(target=self._run_active_plan, daemon=True).start()
             return
 
         self._set_state("thinking", "Thinking...")
@@ -328,6 +349,8 @@ class OrbWindow:
 
     def _set_goal(self, goal_text: str) -> None:
         result = self.goal_session.set_goal(goal_text)
+        if result.get("status") == "success":
+            self.planner.clear_plan()
         prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
         self._set_state("idle", f"{prefix} {result.get('message', '')}")
         if self.telemetry is not None:
@@ -343,6 +366,7 @@ class OrbWindow:
 
     def _clear_goal(self) -> None:
         result = self.goal_session.clear_goal()
+        self.planner.clear_plan()
         prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
         self._set_state("idle", f"{prefix} {result.get('message', '')}")
         if self.telemetry is not None:
@@ -351,6 +375,99 @@ class OrbWindow:
                 {"source": "gui", "status": str(result.get("status", "unknown"))},
             )
         self._refresh_context_panel()
+
+    def _show_plan_status(self) -> None:
+        status = self.planner.status_report()
+        if status.get("status") != "success":
+            self._set_state("idle", f"[WARN] {status.get('message', 'No active plan.')}")
+        else:
+            self._set_state("idle", f"[OK] {status.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "plan_status_requested",
+                {
+                    "source": "gui",
+                    "has_plan": status.get("status") == "success",
+                    "remaining_steps": int(status.get("remaining_steps", 0)),
+                },
+            )
+        self._refresh_context_panel()
+
+    def _generate_plan_from_goal(self) -> None:
+        active_goal = self.goal_session.get_active_goal()
+        if not active_goal:
+            self._set_state("idle", "[WARN] No active goal. Use: goal <text>")
+            self._refresh_context_panel()
+            return
+
+        result = self.planner.generate_plan(active_goal)
+        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+        self._set_state("idle", f"{prefix} {result.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "plan_generated",
+                {
+                    "source": "gui",
+                    "status": str(result.get("status", "unknown")),
+                    "goal": str(active_goal),
+                    "total_steps": int(result.get("data", {}).get("total_steps", 0)),
+                },
+            )
+        self._refresh_context_panel()
+
+    def _clear_plan(self) -> None:
+        result = self.planner.clear_plan()
+        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+        self._set_state("idle", f"{prefix} {result.get('message', '')}")
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "plan_cleared",
+                {"source": "gui", "status": str(result.get("status", "unknown"))},
+            )
+        self._refresh_context_panel()
+
+    def _execute_plan_step(self, step_command: dict[str, Any]) -> dict[str, Any]:
+        tool_name = str(step_command.get("tool", "unknown"))
+        if self.confirmation_manager.requires_confirmation(tool_name):
+            return {
+                "status": "warning",
+                "tool": tool_name,
+                "message": "Skipped confirmation-required step during plan run.",
+            }
+        if not self.permission_manager.can_execute(tool_name, granted_level="read"):
+            return {
+                "status": "error",
+                "tool": tool_name,
+                "message": "Permission denied for current granted level.",
+            }
+        result = self.sandbox.run(lambda: self.router.route(step_command))
+        self.memory.add_entry(step_command, result)
+        return result
+
+    def _run_active_plan(self) -> None:
+        plan = self.planner.get_plan()
+        command = {"tool": "plan_run", "args": {}, "raw_command": "plan run"}
+        if plan is None:
+            result = {"status": "warning", "tool": "plan_run", "message": "No active plan. Use: plan goal"}
+            self.root.after(0, lambda: self._finalize_command(command, result))
+            return
+
+        start_index = int(plan.get("next_step_index", 0))
+        result = run_plan_steps(plan, self._execute_plan_step, start_index=start_index)
+        next_index = result.get("data", {}).get("next_step_index")
+        if isinstance(next_index, int):
+            self.planner.set_next_step_index(next_index)
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "plan_run",
+                {
+                    "source": "gui",
+                    "status": str(result.get("status", "unknown")),
+                    "completed_steps": int(result.get("data", {}).get("completed_steps", 0)),
+                    "total_steps": int(result.get("data", {}).get("total_steps", 0)),
+                },
+            )
+        self.root.after(0, lambda: self._finalize_command(command, result))
 
     def _execute_workflow_step(self, step_command: dict[str, Any]) -> dict[str, Any]:
         tool_name = str(step_command.get("tool", "unknown"))
@@ -424,10 +541,16 @@ class OrbWindow:
         pending_label = str(pending.get("tool", "none")) if isinstance(pending, dict) else "none"
         pending_command = pending if isinstance(pending, dict) else None
         active_goal = self.goal_session.get_active_goal()
+        plan_status = self.planner.status_report()
+        if plan_status.get("status") == "success":
+            plan_label = f"{int(plan_status.get('completed_steps', 0))}/{int(plan_status.get('total_steps', 0))}"
+        else:
+            plan_label = "none"
         suggestions = self.assistant_guide.suggest_next(
             memory=self.memory,
             pending_command=pending_command,
             active_goal=active_goal,
+            has_active_plan=self.planner.has_active_plan(),
             limit=3,
         )
         goal_label = active_goal or "none"
@@ -435,6 +558,7 @@ class OrbWindow:
             last_command=last_command,
             last_status=last_status,
             goal=goal_label,
+            plan=plan_label,
             pending=pending_label,
             recent=recent,
             suggestions=suggestions,
