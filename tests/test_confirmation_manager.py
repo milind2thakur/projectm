@@ -21,9 +21,11 @@ def test_deny_clears_pending() -> None:
     manager = ConfirmationManager(required_tools=["install_package"], enabled=True)
     command = {"tool": "install_package", "args": {"package": "numpy"}}
     manager.queue(command)
+    assert manager.peek_pending() == command
     denied = manager.deny()
     assert denied == command
     assert manager.has_pending() is False
+    assert manager.peek_pending() is None
 
 
 def test_disabled_confirmation_never_requires_confirmation() -> None:

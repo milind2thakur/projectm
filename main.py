@@ -33,6 +33,7 @@ def print_terminal_help() -> None:
     print("  ptt                  Alias for voice capture")
     print("  confirm              Approve pending sensitive action")
     print("  deny                 Reject pending sensitive action")
+    print("  resume               Re-run the most recent task")
     print("  exit | quit          Exit Project M")
     print("  open firefox         Open an allowed app")
     print("  open downloads       Open an allowed folder")
@@ -75,6 +76,14 @@ def run_terminal_mode(
 ) -> None:
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
+    def _print_result(command: dict[str, Any], result: dict[str, Any]) -> None:
+        memory.add_entry(command, result)
+        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
+        spoken_text = format_status_message(result)
+        print(f"{prefix} {spoken_text}")
+        if voice_enabled and tts is not None:
+            tts.speak(spoken_text)
+
     while True:
         try:
             user_text = input("projectm> ").strip()
@@ -95,12 +104,7 @@ def run_terminal_mode(
                 print("[WARN] No pending action to confirm.")
                 continue
             result = sandbox.run(lambda: router.route(command))
-            memory.add_entry(command, result)
-            prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
-            spoken_text = format_status_message(result)
-            print(f"{prefix} {spoken_text}")
-            if voice_enabled and tts is not None:
-                tts.speak(spoken_text)
+            _print_result(command, result)
             continue
 
         if user_text.lower() in {"deny", "cancel", "no"}:
@@ -113,6 +117,24 @@ def run_terminal_mode(
 
         if user_text.lower() in {"help", "?"}:
             print_terminal_help()
+            continue
+
+        if user_text.lower() in {"resume", "resume last task"}:
+            last_entry = memory.get_last_entry()
+            if last_entry is None:
+                print("[WARN] No previous task to resume.")
+                continue
+            command = last_entry.get("command")
+            if not isinstance(command, dict):
+                print("[WARN] Last task data is invalid.")
+                continue
+            tool_name = str(command.get("tool", "unknown"))
+            if confirmation_manager.requires_confirmation(tool_name):
+                confirmation_manager.queue(command)
+                print("[WARN] Confirmation required to resume. Type 'confirm' or 'deny'.")
+                continue
+            result = sandbox.run(lambda: router.route(command))
+            _print_result(command, result)
             continue
 
         if user_text.lower().startswith("history"):
@@ -163,12 +185,7 @@ def run_terminal_mode(
         else:
             result = sandbox.run(lambda: router.route(command))
 
-        memory.add_entry(command, result)
-        prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
-        spoken_text = format_status_message(result)
-        print(f"{prefix} {spoken_text}")
-        if voice_enabled and tts is not None:
-            tts.speak(spoken_text)
+        _print_result(command, result)
 
 
 def main() -> None:

@@ -24,6 +24,9 @@ class ConfirmationManager:
     def has_pending(self) -> bool:
         return self._pending_command is not None
 
+    def peek_pending(self) -> dict[str, Any] | None:
+        return self._pending_command
+
     def confirm(self) -> dict[str, Any] | None:
         command = self._pending_command
         self._pending_command = None

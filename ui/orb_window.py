@@ -15,6 +15,7 @@ from security.sandbox_runner import SandboxRunner
 from voice.speech_to_text import SpeechToText
 from voice.text_to_speech import TextToSpeech
 from .command_panel import CommandPanel
+from .context_panel import ContextPanel
 from .orb_renderer import OrbRenderer
 from .result_formatter import format_status_message
 from .status_indicator import StatusIndicator
@@ -64,7 +65,10 @@ class OrbWindow:
         self.orb = OrbRenderer(self.canvas)
 
         self.status = StatusIndicator(self.root)
-        self.status.label.pack(pady=(6, 18))
+        self.status.label.pack(pady=(6, 8))
+
+        self.context = ContextPanel(self.root)
+        self.context.frame.pack(pady=(0, 10))
 
         self.panel = CommandPanel(self.root, self.handle_command, self.handle_voice_input)
         self.panel.frame.pack(pady=(0, 24))
@@ -72,6 +76,7 @@ class OrbWindow:
         self.panel.focus()
         self._set_state("idle", f"Project M ready ({self.interpreter.mode} mode).")
         self._bind_push_to_talk_key()
+        self._refresh_context_panel()
 
     def _center_window(self, width: int, height: int) -> None:
         self.root.update_idletasks()
@@ -99,6 +104,10 @@ class OrbWindow:
 
         if normalized in {"deny", "cancel", "no"}:
             self._deny_pending_action()
+            return
+
+        if normalized in {"resume", "resume last task"}:
+            self._resume_last_task()
             return
 
         self._set_state("thinking", "Thinking...")
@@ -176,17 +185,41 @@ class OrbWindow:
         command = self.confirmation_manager.confirm()
         if command is None:
             self._set_state("idle", "[WARN] No pending action to confirm.")
+            self._refresh_context_panel()
             return
         self._set_state("executing", f"Executing {command.get('tool', 'action')}...")
+        self._refresh_context_panel()
         Thread(target=self._run_confirmed_command, args=(command,), daemon=True).start()
 
     def _deny_pending_action(self) -> None:
         command = self.confirmation_manager.deny()
         if command is None:
             self._set_state("idle", "[WARN] No pending action to deny.")
+            self._refresh_context_panel()
             return
         tool_name = str(command.get("tool", "unknown"))
         self._set_state("idle", f"[WARN] Pending action '{tool_name}' cancelled.")
+        self._refresh_context_panel()
+
+    def _resume_last_task(self) -> None:
+        last_entry = self.memory.get_last_entry()
+        if last_entry is None:
+            self._set_state("idle", "[WARN] No previous task to resume.")
+            self._refresh_context_panel()
+            return
+        command = last_entry.get("command")
+        if not isinstance(command, dict):
+            self._set_state("idle", "[WARN] Last task data is invalid.")
+            self._refresh_context_panel()
+            return
+        tool_name = str(command.get("tool", "unknown"))
+        if self.confirmation_manager.requires_confirmation(tool_name):
+            self.confirmation_manager.queue(command)
+            self._set_state("idle", "[WARN] Confirmation required to resume. Type 'confirm' or 'deny'.")
+            self._refresh_context_panel()
+            return
+        self._set_state("executing", f"Resuming {tool_name}...")
+        Thread(target=self._run_confirmed_command, args=(command,), daemon=True).start()
 
     def _run_confirmed_command(self, command: dict[str, Any]) -> None:
         result = self.sandbox.run(lambda: self.router.route(command))
@@ -200,6 +233,7 @@ class OrbWindow:
         prefix = "[OK]" if status == "success" else "[WARN]"
 
         self._set_state("idle", f"{prefix} {message}")
+        self._refresh_context_panel()
         if self.tts is not None and self.voice_enabled:
             Thread(target=self.tts.speak, args=(message,), daemon=True).start()
 
@@ -213,6 +247,25 @@ class OrbWindow:
 
     def _on_push_to_talk_key(self, _event: tk.Event) -> None:
         self.handle_voice_input()
+
+    def _refresh_context_panel(self) -> None:
+        history = self.memory.get_history(limit=3)
+        last_command = "-"
+        last_status = "-"
+        recent: list[str] = []
+
+        for entry in history:
+            command = entry.get("command", {})
+            recent.append(str(command.get("raw_command", "<unknown>")))
+
+        if history:
+            last = history[-1]
+            last_command = str(last.get("command", {}).get("raw_command", "-"))
+            last_status = str(last.get("result", {}).get("status", "-"))
+
+        pending = self.confirmation_manager.peek_pending()
+        pending_label = str(pending.get("tool", "none")) if isinstance(pending, dict) else "none"
+        self.context.set(last_command=last_command, last_status=last_status, pending=pending_label, recent=recent)
 
     def run(self) -> None:
         self.root.mainloop()
