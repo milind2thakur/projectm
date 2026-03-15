@@ -6,6 +6,7 @@ import tkinter as tk
 from threading import Thread
 from typing import Any
 
+from ai_core.assistant_guide import AssistantGuide
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
 from ai_core.telemetry_logger import TelemetryLogger
@@ -36,6 +37,7 @@ class OrbWindow:
         confirmation_manager: ConfirmationManager,
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
+        assistant_guide: AssistantGuide,
         telemetry: TelemetryLogger | None = None,
         stt: SpeechToText | None = None,
         tts: TextToSpeech | None = None,
@@ -51,6 +53,7 @@ class OrbWindow:
         self.confirmation_manager = confirmation_manager
         self.permission_manager = permission_manager
         self.sandbox = sandbox
+        self.assistant_guide = assistant_guide
         self.telemetry = telemetry
         self.stt = stt
         self.tts = tts
@@ -357,7 +360,15 @@ class OrbWindow:
 
         pending = self.confirmation_manager.peek_pending()
         pending_label = str(pending.get("tool", "none")) if isinstance(pending, dict) else "none"
-        self.context.set(last_command=last_command, last_status=last_status, pending=pending_label, recent=recent)
+        pending_command = pending if isinstance(pending, dict) else None
+        suggestions = self.assistant_guide.suggest_next(memory=self.memory, pending_command=pending_command, limit=3)
+        self.context.set(
+            last_command=last_command,
+            last_status=last_status,
+            pending=pending_label,
+            recent=recent,
+            suggestions=suggestions,
+        )
 
     def run(self) -> None:
         self.root.mainloop()

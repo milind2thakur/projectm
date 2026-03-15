@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from ai_core.assistant_guide import AssistantGuide
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
 from ai_core.telemetry_logger import TelemetryLogger
@@ -37,6 +38,7 @@ def print_terminal_help() -> None:
     print("  confirm              Approve pending sensitive action")
     print("  deny                 Reject pending sensitive action")
     print("  resume               Re-run the most recent task")
+    print("  next                 Show suggested next actions")
     print("  exit | quit          Exit Project M")
     print("  open firefox         Open an allowed app")
     print("  open downloads       Open an allowed folder")
@@ -66,6 +68,22 @@ def print_terminal_history(memory: MemoryEngine, limit: int = 5) -> None:
         print(f"{index}. {raw} -> {status}")
 
 
+def print_terminal_suggestions(
+    assistant_guide: AssistantGuide,
+    memory: MemoryEngine,
+    confirmation_manager: ConfirmationManager,
+    limit: int = 3,
+) -> list[str]:
+    pending = confirmation_manager.peek_pending()
+    pending_command = pending if isinstance(pending, dict) else None
+    suggestions = assistant_guide.suggest_next(memory, pending_command=pending_command, limit=limit)
+    if suggestions:
+        print(f"Next: {', '.join(suggestions)}")
+    else:
+        print("Next: no suggestions yet.")
+    return suggestions
+
+
 def run_terminal_mode(
     interpreter: CommandInterpreter,
     router: ToolRouter,
@@ -74,6 +92,7 @@ def run_terminal_mode(
     confirmation_manager: ConfirmationManager,
     permission_manager: PermissionManager,
     sandbox: SandboxRunner,
+    assistant_guide: AssistantGuide,
     telemetry: TelemetryLogger | None = None,
     stt: SpeechToText | None = None,
     tts: TextToSpeech | None = None,
@@ -86,6 +105,8 @@ def run_terminal_mode(
 
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
+    print_terminal_suggestions(assistant_guide, memory, confirmation_manager)
+
     def _print_result(command: dict[str, Any], result: dict[str, Any]) -> None:
         memory.add_entry(command, result)
         if telemetry is not None:
@@ -103,6 +124,12 @@ def run_terminal_mode(
         print(f"{prefix} {spoken_text}")
         if voice_enabled and tts is not None:
             tts.speak(spoken_text)
+        suggestions = print_terminal_suggestions(assistant_guide, memory, confirmation_manager)
+        if telemetry is not None:
+            telemetry.log_event(
+                "assistant_suggestions_shown",
+                {"source": "terminal", "suggestions": suggestions},
+            )
 
     while True:
         try:
@@ -116,13 +143,15 @@ def run_terminal_mode(
         if telemetry is not None:
             telemetry.log_event("user_input", {"source": "terminal", "text": user_text})
 
-        if user_text.lower() in {"exit", "quit"}:
+        normalized = user_text.lower()
+
+        if normalized in {"exit", "quit"}:
             if telemetry is not None:
                 telemetry.log_event("terminal_mode_exit", {"reason": "user_exit"})
             print("Exiting Project M.")
             break
 
-        if user_text.lower() in {"confirm", "yes"}:
+        if normalized in {"confirm", "yes"}:
             command = confirmation_manager.confirm()
             if command is None:
                 print("[WARN] No pending action to confirm.")
@@ -136,7 +165,7 @@ def run_terminal_mode(
             _print_result(command, result)
             continue
 
-        if user_text.lower() in {"deny", "cancel", "no"}:
+        if normalized in {"deny", "cancel", "no"}:
             command = confirmation_manager.deny()
             if command is None:
                 print("[WARN] No pending action to deny.")
@@ -149,11 +178,20 @@ def run_terminal_mode(
             print(f"[WARN] Pending action '{command.get('tool', 'unknown')}' cancelled.")
             continue
 
-        if user_text.lower() in {"help", "?"}:
+        if normalized in {"help", "?"}:
             print_terminal_help()
             continue
 
-        if user_text.lower() in {"resume", "resume last task"}:
+        if normalized in {"next", "suggest", "suggestions"}:
+            suggestions = print_terminal_suggestions(assistant_guide, memory, confirmation_manager)
+            if telemetry is not None:
+                telemetry.log_event(
+                    "assistant_suggestions_shown",
+                    {"source": "terminal", "suggestions": suggestions},
+                )
+            continue
+
+        if normalized in {"resume", "resume last task"}:
             last_entry = memory.get_last_entry()
             if last_entry is None:
                 print("[WARN] No previous task to resume.")
@@ -194,7 +232,7 @@ def run_terminal_mode(
             _print_result(command, result)
             continue
 
-        if user_text.lower().startswith("history"):
+        if normalized.startswith("history"):
             parts = user_text.split()
             limit = 5
             if len(parts) > 1 and parts[1].isdigit():
@@ -202,7 +240,7 @@ def run_terminal_mode(
             print_terminal_history(memory, limit=limit)
             continue
 
-        if user_text.lower() in {"voice", "ptt"}:
+        if normalized in {"voice", "ptt"}:
             if not voice_enabled:
                 print("[WARN] Voice input is disabled in settings.")
                 continue
@@ -315,6 +353,7 @@ def main() -> None:
     )
     interpreter.allowed_tools = router.list_tools()
     memory = MemoryEngine(db_path=str(settings.get("memory_db_path", "data/projectm_memory.db")))
+    assistant_guide = AssistantGuide()
     confirmation_tools = settings.get("confirmation_required_tools")
     if confirmation_tools is None:
         confirmation_tools = router.tools_requiring_confirmation()
@@ -355,6 +394,7 @@ def main() -> None:
             confirmation_manager=confirmation_manager,
             permission_manager=permission_manager,
             sandbox=sandbox,
+            assistant_guide=assistant_guide,
             telemetry=telemetry,
             stt=stt,
             tts=tts,
@@ -376,6 +416,7 @@ def main() -> None:
             confirmation_manager,
             permission_manager,
             sandbox,
+            assistant_guide,
             telemetry=telemetry,
             stt=stt,
             tts=tts,

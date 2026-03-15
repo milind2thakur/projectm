@@ -8,7 +8,7 @@ Users issue natural-language commands (text or voice). Project M interprets inte
 
 ## Architecture
 
-`User text/voice -> command interpreter -> tool router -> safe tool execution -> UI result`
+`User text/voice -> command interpreter -> tool router/workflows -> safe tool execution -> memory + telemetry -> UI result + next suggestions`
 
 ## Current Features
 
@@ -23,11 +23,17 @@ Users issue natural-language commands (text or voice). Project M interprets inte
 - Structured tool routing and responses
 - Safe wrappers for app launch, folder open, file search, system usage, and install preview
 - Permission gating (`read`, `write`, `admin`) and sandbox abstraction with exception-safe execution
-- In-memory command/result history
+- Confirmation queue for sensitive actions (`confirm` / `deny`)
+- SQLite-backed command/result history (persistent memory)
 - Terminal fallback mode when Tk/Tcl GUI is unavailable
 - Real speech-to-text flow using `faster-whisper` + microphone capture (`sounddevice`)
 - Optional text-to-speech responses via `pyttsx3`
-- Terminal meta commands: `help`, `history [n]`, and `voice`
+- Push-to-talk hotkey support for voice capture
+- Window control tools (`list`, `focus`, `minimize`, `close`)
+- Workflow templates (`list workflows`, `run workflow <name>`)
+- Telemetry JSONL event logging for demo traces
+- Context-aware "next action" suggestions in terminal and GUI context panel
+- Terminal meta commands: `help`, `history [n]`, `voice`, `ptt`, `resume`, and `next`
 
 ## Folder Structure
 
@@ -47,8 +53,16 @@ Users issue natural-language commands (text or voice). Project M interprets inte
 - `mode`: `fallback` or model mode (`models/projectm.gguf`)
 - `voice_enabled`: enable/disable voice capture + spoken responses
 - `stt_model`: faster-whisper model size (`base` default)
+- `voice_capture_seconds`: microphone capture duration per attempt
+- `voice_capture_retries`: retry attempts when speech/noise fails
+- `voice_push_to_talk_key`: keyboard key used to trigger push-to-talk
 - `default_search_root`: root path for file search
 - `allowed_apps`: app allowlist for `open <app>`
+- `confirmation_enabled`: enable/disable confirmation queue
+- `confirmation_required_tools`: tools that require confirmation
+- `memory_db_path`: SQLite path for persistent memory entries
+- `telemetry_enabled`: enable/disable telemetry events
+- `telemetry_log_path`: JSONL output path for telemetry logs
 
 ## Setup
 
@@ -81,6 +95,8 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - `install numpy`
 - `find invoice`
 - `voice` (terminal mode)
+- `next` (show AI-suggested next actions)
+- `resume` (re-run last task)
 - `help`
 - `history 10`
 
@@ -93,7 +109,7 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - Basic permission model
 
 ### V2
-- Real voice input/output wiring (in progress)
+- Real voice input/output wiring
 - Global hotkey and summon behavior
 - Confirmed admin action flow
 
@@ -101,6 +117,11 @@ If GUI startup fails (for example, missing Tk/Tcl), Project M automatically swit
 - Deeper desktop/window control
 - Model-assisted orchestration with memory context
 - Plugin/tool ecosystem
+
+### V4
+- Context-aware next-action guidance
+- Workflow-first user journeys
+- Demo telemetry and observability
 
 ## Safety Note
 

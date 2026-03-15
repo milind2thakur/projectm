@@ -10,7 +10,7 @@ class ContextPanel:
 
     def __init__(self, parent: tk.Widget) -> None:
         self.frame = tk.Frame(parent, bg="#090b10")
-        self.var = tk.StringVar(value="Last: -\nStatus: -\nPending: none\nRecent: -")
+        self.var = tk.StringVar(value="Last: -\nStatus: -\nPending: none\nRecent: -\nNext: -")
         self.label = tk.Label(
             self.frame,
             textvariable=self.var,
@@ -23,11 +23,20 @@ class ContextPanel:
         )
         self.label.pack()
 
-    def set(self, last_command: str, last_status: str, pending: str, recent: list[str]) -> None:
+    def set(
+        self,
+        last_command: str,
+        last_status: str,
+        pending: str,
+        recent: list[str],
+        suggestions: list[str],
+    ) -> None:
         recent_text = ", ".join(recent[-3:]) if recent else "-"
+        suggestions_text = ", ".join(suggestions[:3]) if suggestions else "-"
         self.var.set(
             f"Last: {last_command or '-'}\n"
             f"Status: {last_status or '-'}\n"
             f"Pending: {pending or 'none'}\n"
-            f"Recent: {recent_text}"
+            f"Recent: {recent_text}\n"
+            f"Next: {suggestions_text}"
         )
