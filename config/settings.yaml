@@ -1,6 +1,8 @@
 app_name: Project M
 mode: fallback
 memory_db_path: data/projectm_memory.db
+telemetry_enabled: true
+telemetry_log_path: logs/projectm_events.jsonl
 confirmation_enabled: true
 confirmation_required_tools:
   - install_package

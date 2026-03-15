@@ -8,4 +8,5 @@ models/
 *.bin
 *.log
 data/*.db
+logs/*.jsonl
 .DS_Store

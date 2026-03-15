@@ -10,6 +10,7 @@ import yaml
 
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
+from ai_core.telemetry_logger import TelemetryLogger
 from ai_core.workflow_runner import run_workflow_template
 from ai_core.workflow_templates import WorkflowTemplateEngine
 from security.confirmation_manager import ConfirmationManager
@@ -73,16 +74,30 @@ def run_terminal_mode(
     confirmation_manager: ConfirmationManager,
     permission_manager: PermissionManager,
     sandbox: SandboxRunner,
+    telemetry: TelemetryLogger | None = None,
     stt: SpeechToText | None = None,
     tts: TextToSpeech | None = None,
     voice_enabled: bool = True,
     voice_capture_seconds: int = 4,
     voice_capture_retries: int = 1,
 ) -> None:
+    if telemetry is not None:
+        telemetry.log_event("terminal_mode_started", {"interpreter_mode": interpreter.mode})
+
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
     def _print_result(command: dict[str, Any], result: dict[str, Any]) -> None:
         memory.add_entry(command, result)
+        if telemetry is not None:
+            telemetry.log_event(
+                "command_result",
+                {
+                    "source": "terminal",
+                    "tool": str(command.get("tool", "unknown")),
+                    "status": str(result.get("status", "error")),
+                    "message": str(result.get("message", "")),
+                },
+            )
         prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
         spoken_text = format_status_message(result)
         print(f"{prefix} {spoken_text}")
@@ -98,8 +113,12 @@ def run_terminal_mode(
 
         if not user_text:
             continue
+        if telemetry is not None:
+            telemetry.log_event("user_input", {"source": "terminal", "text": user_text})
 
         if user_text.lower() in {"exit", "quit"}:
+            if telemetry is not None:
+                telemetry.log_event("terminal_mode_exit", {"reason": "user_exit"})
             print("Exiting Project M.")
             break
 
@@ -108,6 +127,11 @@ def run_terminal_mode(
             if command is None:
                 print("[WARN] No pending action to confirm.")
                 continue
+            if telemetry is not None:
+                telemetry.log_event(
+                    "confirmation_confirmed",
+                    {"source": "terminal", "tool": str(command.get("tool", "unknown"))},
+                )
             result = sandbox.run(lambda: router.route(command))
             _print_result(command, result)
             continue
@@ -117,6 +141,11 @@ def run_terminal_mode(
             if command is None:
                 print("[WARN] No pending action to deny.")
                 continue
+            if telemetry is not None:
+                telemetry.log_event(
+                    "confirmation_denied",
+                    {"source": "terminal", "tool": str(command.get("tool", "unknown"))},
+                )
             print(f"[WARN] Pending action '{command.get('tool', 'unknown')}' cancelled.")
             continue
 
@@ -184,11 +213,29 @@ def run_terminal_mode(
                 f"Listening... ({max(1, voice_capture_seconds)}s, "
                 f"up to {max(1, voice_capture_retries)} attempt(s))"
             )
+            if telemetry is not None:
+                telemetry.log_event(
+                    "voice_capture_started",
+                    {
+                        "source": "terminal",
+                        "seconds": max(1, voice_capture_seconds),
+                        "retries": max(1, voice_capture_retries),
+                    },
+                )
             stt_result = stt.transcribe_from_microphone(
                 seconds=voice_capture_seconds,
                 retries=voice_capture_retries,
             )
             if stt_result.get("status") != "success":
+                if telemetry is not None:
+                    telemetry.log_event(
+                        "voice_capture_failed",
+                        {
+                            "source": "terminal",
+                            "status": str(stt_result.get("status", "error")),
+                            "message": str(stt_result.get("message", "")),
+                        },
+                    )
                 print(f"[WARN] {stt_result.get('message', 'Voice transcription failed.')}")
                 continue
             user_text = str(stt_result.get("text", "")).strip()
@@ -196,6 +243,8 @@ def run_terminal_mode(
                 print("[WARN] No speech detected.")
                 continue
             print(f'Heard: "{user_text}"')
+            if telemetry is not None:
+                telemetry.log_event("voice_capture_success", {"source": "terminal", "text": user_text})
 
         command = interpreter.interpret(user_text)
         tool_name = str(command.get("tool", "unknown"))
@@ -232,6 +281,11 @@ def run_terminal_mode(
 
         if confirmation_manager.requires_confirmation(tool_name):
             confirmation_manager.queue(command)
+            if telemetry is not None:
+                telemetry.log_event(
+                    "confirmation_queued",
+                    {"source": "terminal", "tool": tool_name},
+                )
             print("[WARN] Confirmation required. Type 'confirm' to proceed or 'deny' to cancel.")
             continue
 
@@ -270,6 +324,10 @@ def main() -> None:
     )
     permission_manager = PermissionManager(tool_permissions=router.tool_permissions())
     sandbox = SandboxRunner()
+    telemetry = TelemetryLogger(
+        enabled=bool(settings.get("telemetry_enabled", True)),
+        log_path=str(settings.get("telemetry_log_path", "logs/projectm_events.jsonl")),
+    )
     voice_enabled = bool(settings.get("voice_enabled", True))
     voice_capture_seconds = int(settings.get("voice_capture_seconds", 4))
     voice_capture_retries = int(settings.get("voice_capture_retries", 1))
@@ -280,6 +338,13 @@ def main() -> None:
         capture_retries=voice_capture_retries,
     )
     tts = TextToSpeech()
+    telemetry.log_event(
+        "app_started",
+        {
+            "interpreter_mode": interpreter.mode,
+            "voice_enabled": voice_enabled,
+        },
+    )
 
     try:
         app = OrbWindow(
@@ -290,6 +355,7 @@ def main() -> None:
             confirmation_manager=confirmation_manager,
             permission_manager=permission_manager,
             sandbox=sandbox,
+            telemetry=telemetry,
             stt=stt,
             tts=tts,
             voice_enabled=voice_enabled,
@@ -310,6 +376,7 @@ def main() -> None:
             confirmation_manager,
             permission_manager,
             sandbox,
+            telemetry=telemetry,
             stt=stt,
             tts=tts,
             voice_enabled=voice_enabled,

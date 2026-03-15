@@ -8,6 +8,7 @@ from typing import Any
 
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
+from ai_core.telemetry_logger import TelemetryLogger
 from ai_core.tool_router import ToolRouter
 from ai_core.workflow_runner import run_workflow_template
 from ai_core.workflow_templates import WorkflowTemplateEngine
@@ -35,6 +36,7 @@ class OrbWindow:
         confirmation_manager: ConfirmationManager,
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
+        telemetry: TelemetryLogger | None = None,
         stt: SpeechToText | None = None,
         tts: TextToSpeech | None = None,
         voice_enabled: bool = True,
@@ -49,6 +51,7 @@ class OrbWindow:
         self.confirmation_manager = confirmation_manager
         self.permission_manager = permission_manager
         self.sandbox = sandbox
+        self.telemetry = telemetry
         self.stt = stt
         self.tts = tts
         self.voice_enabled = voice_enabled
@@ -81,6 +84,8 @@ class OrbWindow:
         self._set_state("idle", f"Project M ready ({self.interpreter.mode} mode).")
         self._bind_push_to_talk_key()
         self._refresh_context_panel()
+        if self.telemetry is not None:
+            self.telemetry.log_event("gui_mode_started", {"interpreter_mode": self.interpreter.mode})
 
     def _center_window(self, width: int, height: int) -> None:
         self.root.update_idletasks()
@@ -96,6 +101,8 @@ class OrbWindow:
 
     def handle_command(self, text: str) -> None:
         normalized = text.strip().lower()
+        if self.telemetry is not None:
+            self.telemetry.log_event("user_input", {"source": "gui", "text": text})
 
         if normalized in {"quit", "exit"}:
             self._set_state("idle", "Shutting down Project M...")
@@ -130,6 +137,15 @@ class OrbWindow:
             return
 
         self._voice_capture_active = True
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "voice_capture_started",
+                {
+                    "source": "gui",
+                    "seconds": self.voice_capture_seconds,
+                    "retries": self.voice_capture_retries,
+                },
+            )
         self._set_state(
             "listening",
             f"Listening for voice input ({self.voice_capture_seconds}s, up to {self.voice_capture_retries} attempt(s))...",
@@ -146,6 +162,15 @@ class OrbWindow:
             status = result.get("status")
             if status != "success":
                 message = str(result.get("message", "Voice transcription failed."))
+                if self.telemetry is not None:
+                    self.telemetry.log_event(
+                        "voice_capture_failed",
+                        {
+                            "source": "gui",
+                            "status": str(result.get("status", "error")),
+                            "message": message,
+                        },
+                    )
                 self.root.after(0, lambda: self._set_state("idle", f"[WARN] {message}"))
                 return
 
@@ -154,6 +179,8 @@ class OrbWindow:
                 self.root.after(0, lambda: self._set_state("idle", "[WARN] No speech detected."))
                 return
 
+            if self.telemetry is not None:
+                self.telemetry.log_event("voice_capture_success", {"source": "gui", "text": text})
             self.root.after(0, lambda: self._set_state("thinking", f'Heard: "{text}"'))
             self._run_command_in_background(text)
         finally:
@@ -176,6 +203,11 @@ class OrbWindow:
 
         if self.confirmation_manager.requires_confirmation(str(tool_name)):
             self.confirmation_manager.queue(command)
+            if self.telemetry is not None:
+                self.telemetry.log_event(
+                    "confirmation_queued",
+                    {"source": "gui", "tool": str(tool_name)},
+                )
             result = {
                 "status": "warning",
                 "tool": str(tool_name),
@@ -202,6 +234,11 @@ class OrbWindow:
             self._set_state("idle", "[WARN] No pending action to confirm.")
             self._refresh_context_panel()
             return
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "confirmation_confirmed",
+                {"source": "gui", "tool": str(command.get("tool", "unknown"))},
+            )
         self._set_state("executing", f"Executing {command.get('tool', 'action')}...")
         self._refresh_context_panel()
         Thread(target=self._run_confirmed_command, args=(command,), daemon=True).start()
@@ -213,6 +250,11 @@ class OrbWindow:
             self._refresh_context_panel()
             return
         tool_name = str(command.get("tool", "unknown"))
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "confirmation_denied",
+                {"source": "gui", "tool": tool_name},
+            )
         self._set_state("idle", f"[WARN] Pending action '{tool_name}' cancelled.")
         self._refresh_context_panel()
 
@@ -265,6 +307,16 @@ class OrbWindow:
 
     def _finalize_command(self, command: dict[str, Any], result: dict[str, Any]) -> None:
         self.memory.add_entry(command, result)
+        if self.telemetry is not None:
+            self.telemetry.log_event(
+                "command_result",
+                {
+                    "source": "gui",
+                    "tool": str(command.get("tool", "unknown")),
+                    "status": str(result.get("status", "error")),
+                    "message": str(result.get("message", "")),
+                },
+            )
 
         status = result.get("status", "error")
         message = format_status_message(result)
@@ -284,6 +336,8 @@ class OrbWindow:
         self.root.bind(f"<{key_name}>", self._on_push_to_talk_key)
 
     def _on_push_to_talk_key(self, _event: tk.Event) -> None:
+        if self.telemetry is not None:
+            self.telemetry.log_event("push_to_talk_triggered", {"key": self.voice_push_to_talk_key})
         self.handle_voice_input()
 
     def _refresh_context_panel(self) -> None:
