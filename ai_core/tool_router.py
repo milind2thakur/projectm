@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .tool_registry import ToolRegistry, build_default_registry
+from .workflow_templates import WorkflowTemplateEngine
 
 
 class ToolRouter:
@@ -14,9 +15,14 @@ class ToolRouter:
         self,
         allowed_apps: list[str] | None = None,
         search_root: str | None = None,
+        workflow_engine: WorkflowTemplateEngine | None = None,
         registry: ToolRegistry | None = None,
     ) -> None:
-        self._registry = registry or build_default_registry(allowed_apps=allowed_apps, search_root=search_root)
+        self._registry = registry or build_default_registry(
+            allowed_apps=allowed_apps,
+            search_root=search_root,
+            workflow_engine=workflow_engine,
+        )
 
     def route(self, command: dict[str, Any]) -> dict[str, Any]:
         tool_name = str(command.get("tool", "unknown"))

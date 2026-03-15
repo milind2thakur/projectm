@@ -13,6 +13,7 @@ def test_print_terminal_help_includes_core_commands(capsys) -> None:
     assert "deny" in output
     assert "resume" in output
     assert "list windows" in output
+    assert "list workflows" in output
     assert "exit | quit" in output
 
 

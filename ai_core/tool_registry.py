@@ -12,6 +12,7 @@ from tools.open_app import open_app
 from tools.open_folder import open_folder
 from tools.system_info import cpu_usage, memory_usage, storage_usage
 from tools.window_control import close_window, focus_window, list_windows, minimize_window
+from .workflow_templates import WorkflowTemplateEngine
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,16 @@ class ToolRegistry:
         return {name: spec.required_permission for name, spec in self._tools.items()}
 
 
-def build_default_registry(allowed_apps: list[str] | None = None, search_root: str | None = None) -> ToolRegistry:
+def build_default_registry(
+    allowed_apps: list[str] | None = None,
+    search_root: str | None = None,
+    workflow_engine: WorkflowTemplateEngine | None = None,
+) -> ToolRegistry:
     """Builds the default registry used by Project M runtime."""
 
     registry = ToolRegistry()
     root = Path(search_root).expanduser() if search_root else None
+    workflows = workflow_engine or WorkflowTemplateEngine()
 
     def _run_open_app(args: dict[str, Any]) -> dict[str, Any]:
         return open_app(str(args.get("app", "")), allowed_apps=allowed_apps)
@@ -95,6 +101,31 @@ def build_default_registry(allowed_apps: list[str] | None = None, search_root: s
 
     def _run_close_window(args: dict[str, Any]) -> dict[str, Any]:
         return close_window(str(args.get("target", "")))
+
+    def _run_workflow_list(_args: dict[str, Any]) -> dict[str, Any]:
+        items = workflows.list_workflows()
+        return {
+            "status": "success",
+            "tool": "workflow_list",
+            "message": f"Found {len(items)} workflow template(s).",
+            "data": {"workflows": items},
+        }
+
+    def _run_workflow_run(args: dict[str, Any]) -> dict[str, Any]:
+        requested = str(args.get("template", "")).strip()
+        template = workflows.get_template(requested)
+        if template is None:
+            return {
+                "status": "error",
+                "tool": "workflow_run",
+                "message": f"Unknown workflow '{requested}'.",
+            }
+        return {
+            "status": "warning",
+            "tool": "workflow_run",
+            "message": f"Workflow '{template.name}' is ready to run.",
+            "data": {"template": template.name, "description": template.description},
+        }
 
     registry.register(
         ToolSpec(
@@ -168,6 +199,22 @@ def build_default_registry(allowed_apps: list[str] | None = None, search_root: s
             required_permission="read",
             requires_confirmation=True,
             handler=_run_close_window,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="workflow_list",
+            description="List available workflow templates.",
+            required_permission="read",
+            handler=_run_workflow_list,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="workflow_run",
+            description="Run a named multi-step workflow template.",
+            required_permission="read",
+            handler=_run_workflow_run,
         )
     )
     return registry

@@ -10,6 +10,8 @@ import yaml
 
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
+from ai_core.workflow_runner import run_workflow_template
+from ai_core.workflow_templates import WorkflowTemplateEngine
 from security.confirmation_manager import ConfirmationManager
 from ai_core.tool_router import ToolRouter
 from security.permission_manager import PermissionManager
@@ -46,6 +48,8 @@ def print_terminal_help() -> None:
     print("  focus <title>        Focus window by title")
     print("  minimize <title>     Minimize window by title")
     print("  close <title>        Close window by title (requires confirmation)")
+    print("  list workflows       List workflow templates")
+    print("  run workflow <name>  Run a workflow template")
 
 
 def print_terminal_history(memory: MemoryEngine, limit: int = 5) -> None:
@@ -65,6 +69,7 @@ def run_terminal_mode(
     interpreter: CommandInterpreter,
     router: ToolRouter,
     memory: MemoryEngine,
+    workflow_engine: WorkflowTemplateEngine,
     confirmation_manager: ConfirmationManager,
     permission_manager: PermissionManager,
     sandbox: SandboxRunner,
@@ -133,7 +138,30 @@ def run_terminal_mode(
                 confirmation_manager.queue(command)
                 print("[WARN] Confirmation required to resume. Type 'confirm' or 'deny'.")
                 continue
-            result = sandbox.run(lambda: router.route(command))
+            if tool_name == "workflow_run":
+                template_name = str(command.get("args", {}).get("template", ""))
+
+                def _resume_step(step_command: dict[str, Any]) -> dict[str, Any]:
+                    step_tool = str(step_command.get("tool", "unknown"))
+                    if confirmation_manager.requires_confirmation(step_tool):
+                        return {
+                            "status": "warning",
+                            "tool": step_tool,
+                            "message": "Skipped confirmation-required step during workflow run.",
+                        }
+                    if not permission_manager.can_execute(step_tool, granted_level="read"):
+                        return {
+                            "status": "error",
+                            "tool": step_tool,
+                            "message": "Permission denied for current granted level.",
+                        }
+                    step_result = sandbox.run(lambda: router.route(step_command))
+                    memory.add_entry(step_command, step_result)
+                    return step_result
+
+                result = run_workflow_template(template_name, workflow_engine, _resume_step)
+            else:
+                result = sandbox.run(lambda: router.route(command))
             _print_result(command, result)
             continue
 
@@ -171,6 +199,37 @@ def run_terminal_mode(
 
         command = interpreter.interpret(user_text)
         tool_name = str(command.get("tool", "unknown"))
+
+        if tool_name == "workflow_list":
+            result = router.route(command)
+            _print_result(command, result)
+            continue
+
+        if tool_name == "workflow_run":
+            template_name = str(command.get("args", {}).get("template", ""))
+
+            def _execute_step(step_command: dict[str, Any]) -> dict[str, Any]:
+                step_tool = str(step_command.get("tool", "unknown"))
+                if confirmation_manager.requires_confirmation(step_tool):
+                    return {
+                        "status": "warning",
+                        "tool": step_tool,
+                        "message": "Skipped confirmation-required step during workflow run.",
+                    }
+                if not permission_manager.can_execute(step_tool, granted_level="read"):
+                    return {
+                        "status": "error",
+                        "tool": step_tool,
+                        "message": "Permission denied for current granted level.",
+                    }
+                result = sandbox.run(lambda: router.route(step_command))
+                memory.add_entry(step_command, result)
+                return result
+
+            workflow_result = run_workflow_template(template_name, workflow_engine, _execute_step)
+            _print_result(command, workflow_result)
+            continue
+
         if confirmation_manager.requires_confirmation(tool_name):
             confirmation_manager.queue(command)
             print("[WARN] Confirmation required. Type 'confirm' to proceed or 'deny' to cancel.")
@@ -190,10 +249,12 @@ def run_terminal_mode(
 
 def main() -> None:
     settings = load_settings(Path("config/settings.yaml"))
+    workflow_engine = WorkflowTemplateEngine()
 
     router = ToolRouter(
         allowed_apps=settings.get("allowed_apps"),
         search_root=settings.get("default_search_root"),
+        workflow_engine=workflow_engine,
     )
     interpreter = CommandInterpreter(
         model_path="models/projectm.gguf" if settings.get("mode") != "fallback" else None
@@ -225,6 +286,7 @@ def main() -> None:
             interpreter=interpreter,
             router=router,
             memory=memory,
+            workflow_engine=workflow_engine,
             confirmation_manager=confirmation_manager,
             permission_manager=permission_manager,
             sandbox=sandbox,
@@ -244,6 +306,7 @@ def main() -> None:
             interpreter,
             router,
             memory,
+            workflow_engine,
             confirmation_manager,
             permission_manager,
             sandbox,

@@ -9,6 +9,8 @@ from typing import Any
 from ai_core.command_interpreter import CommandInterpreter
 from ai_core.memory_engine import MemoryEngine
 from ai_core.tool_router import ToolRouter
+from ai_core.workflow_runner import run_workflow_template
+from ai_core.workflow_templates import WorkflowTemplateEngine
 from security.confirmation_manager import ConfirmationManager
 from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
@@ -29,6 +31,7 @@ class OrbWindow:
         interpreter: CommandInterpreter,
         router: ToolRouter,
         memory: MemoryEngine,
+        workflow_engine: WorkflowTemplateEngine,
         confirmation_manager: ConfirmationManager,
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
@@ -42,6 +45,7 @@ class OrbWindow:
         self.interpreter = interpreter
         self.router = router
         self.memory = memory
+        self.workflow_engine = workflow_engine
         self.confirmation_manager = confirmation_manager
         self.permission_manager = permission_manager
         self.sandbox = sandbox
@@ -159,6 +163,17 @@ class OrbWindow:
         command = self.interpreter.interpret(text)
         tool_name = command.get("tool", "unknown")
 
+        if tool_name == "workflow_list":
+            result = self.router.route(command)
+            self.root.after(0, lambda: self._finalize_command(command, result))
+            return
+
+        if tool_name == "workflow_run":
+            template_name = str(command.get("args", {}).get("template", ""))
+            result = run_workflow_template(template_name, self.workflow_engine, self._execute_workflow_step)
+            self.root.after(0, lambda: self._finalize_command(command, result))
+            return
+
         if self.confirmation_manager.requires_confirmation(str(tool_name)):
             self.confirmation_manager.queue(command)
             result = {
@@ -222,8 +237,31 @@ class OrbWindow:
         Thread(target=self._run_confirmed_command, args=(command,), daemon=True).start()
 
     def _run_confirmed_command(self, command: dict[str, Any]) -> None:
-        result = self.sandbox.run(lambda: self.router.route(command))
+        tool_name = str(command.get("tool", "unknown"))
+        if tool_name == "workflow_run":
+            template_name = str(command.get("args", {}).get("template", ""))
+            result = run_workflow_template(template_name, self.workflow_engine, self._execute_workflow_step)
+        else:
+            result = self.sandbox.run(lambda: self.router.route(command))
         self.root.after(0, lambda: self._finalize_command(command, result))
+
+    def _execute_workflow_step(self, step_command: dict[str, Any]) -> dict[str, Any]:
+        tool_name = str(step_command.get("tool", "unknown"))
+        if self.confirmation_manager.requires_confirmation(tool_name):
+            return {
+                "status": "warning",
+                "tool": tool_name,
+                "message": "Skipped confirmation-required step during workflow run.",
+            }
+        if not self.permission_manager.can_execute(tool_name, granted_level="read"):
+            return {
+                "status": "error",
+                "tool": tool_name,
+                "message": "Permission denied for current granted level.",
+            }
+        result = self.sandbox.run(lambda: self.router.route(step_command))
+        self.memory.add_entry(step_command, result)
+        return result
 
     def _finalize_command(self, command: dict[str, Any], result: dict[str, Any]) -> None:
         self.memory.add_entry(command, result)

@@ -26,6 +26,8 @@ class CommandInterpreter:
             "focus_window",
             "minimize_window",
             "close_window",
+            "workflow_list",
+            "workflow_run",
         ]
         self._llm = self._init_optional_llm()
         self.mode = "model" if self._llm is not None else "fallback"
@@ -126,5 +128,20 @@ class CommandInterpreter:
         if text.startswith("close "):
             target = text.removeprefix("close ").strip()
             return {"tool": "close_window", "args": {"target": target}, "raw_command": user_text}
+
+        if text in {"list workflows", "workflow list", "show workflows"}:
+            return {"tool": "workflow_list", "args": {}, "raw_command": user_text}
+
+        if text.startswith("run workflow "):
+            template = text.removeprefix("run workflow ").strip().replace(" ", "_")
+            return {"tool": "workflow_run", "args": {"template": template}, "raw_command": user_text}
+        if text.startswith("start workflow "):
+            template = text.removeprefix("start workflow ").strip().replace(" ", "_")
+            return {"tool": "workflow_run", "args": {"template": template}, "raw_command": user_text}
+
+        if text in {"open coding workspace", "start coding workflow"}:
+            return {"tool": "workflow_run", "args": {"template": "coding_workspace"}, "raw_command": user_text}
+        if text in {"summarize system health", "system health summary"}:
+            return {"tool": "workflow_run", "args": {"template": "system_health"}, "raw_command": user_text}
 
         return {"tool": "unknown", "args": {"text": text}, "raw_command": user_text}

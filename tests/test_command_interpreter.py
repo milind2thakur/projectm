@@ -32,3 +32,19 @@ def test_fallback_focus_window() -> None:
         "args": {"target": "firefox"},
         "raw_command": "focus firefox",
     }
+
+
+def test_fallback_list_workflows() -> None:
+    interpreter = CommandInterpreter(model_path=None)
+    command = interpreter.interpret("list workflows")
+    assert command == {"tool": "workflow_list", "args": {}, "raw_command": "list workflows"}
+
+
+def test_fallback_run_workflow() -> None:
+    interpreter = CommandInterpreter(model_path=None)
+    command = interpreter.interpret("run workflow coding workspace")
+    assert command == {
+        "tool": "workflow_run",
+        "args": {"template": "coding_workspace"},
+        "raw_command": "run workflow coding workspace",
+    }

@@ -29,3 +29,4 @@ def test_default_registry_exposes_policy_metadata() -> None:
     assert "close_window" in registry.tools_requiring_confirmation()
     permissions = registry.tool_permissions()
     assert permissions["open_app"] == "read"
+    assert "workflow_list" in registry.list_tool_names()
