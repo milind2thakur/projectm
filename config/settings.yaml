@@ -1,5 +1,7 @@
 app_name: Project M
 mode: fallback
+voice_enabled: true
+stt_model: base
 default_search_root: ~
 allowed_apps:
   - firefox

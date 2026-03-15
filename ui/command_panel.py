@@ -1,4 +1,4 @@
-"""Command input panel for OrbWindow."""
+﻿"""Command input panel for OrbWindow."""
 
 from __future__ import annotations
 
@@ -9,8 +9,14 @@ from collections.abc import Callable
 class CommandPanel:
     """Encapsulates text input and submit behavior."""
 
-    def __init__(self, parent: tk.Widget, on_submit: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        parent: tk.Widget,
+        on_submit: Callable[[str], None],
+        on_voice: Callable[[], None] | None = None,
+    ) -> None:
         self._on_submit = on_submit
+        self._on_voice = on_voice
         self.frame = tk.Frame(parent, bg="#090b10")
 
         self.input_var = tk.StringVar()
@@ -29,12 +35,12 @@ class CommandPanel:
 
         self.mic_button = tk.Button(
             self.frame,
-            text="🎤",
+            text="Mic",
             bg="#1f2937",
             fg="#e5e7eb",
             relief=tk.FLAT,
-            width=3,
-            command=self._mic_placeholder,
+            width=4,
+            command=self._mic_action,
         )
         self.mic_button.pack(side=tk.LEFT)
 
@@ -45,7 +51,10 @@ class CommandPanel:
         self.input_var.set("")
         self._on_submit(text)
 
-    def _mic_placeholder(self) -> None:
+    def _mic_action(self) -> None:
+        if self._on_voice is not None:
+            self._on_voice()
+            return
         self._on_submit("[voice placeholder]")
 
     def focus(self) -> None:

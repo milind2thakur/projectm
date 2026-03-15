@@ -15,6 +15,8 @@ from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
 from ui.result_formatter import format_status_message
 from ui.orb_window import OrbWindow
+from voice.speech_to_text import SpeechToText
+from voice.text_to_speech import TextToSpeech
 
 
 def load_settings(path: Path) -> dict:
@@ -26,6 +28,7 @@ def print_terminal_help() -> None:
     print("Available commands:")
     print("  help                 Show this help text")
     print("  history [n]          Show the most recent n commands (default: 5)")
+    print("  voice                Capture voice command from microphone")
     print("  exit | quit          Exit Project M")
     print("  open firefox         Open an allowed app")
     print("  open downloads       Open an allowed folder")
@@ -55,6 +58,9 @@ def run_terminal_mode(
     memory: MemoryEngine,
     permission_manager: PermissionManager,
     sandbox: SandboxRunner,
+    stt: SpeechToText | None = None,
+    tts: TextToSpeech | None = None,
+    voice_enabled: bool = True,
 ) -> None:
     print("Project M terminal mode is active.")
     print("Type a command, 'help' for options, or 'exit' to quit.")
@@ -84,6 +90,24 @@ def run_terminal_mode(
             print_terminal_history(memory, limit=limit)
             continue
 
+        if user_text.lower() == "voice":
+            if not voice_enabled:
+                print("[WARN] Voice input is disabled in settings.")
+                continue
+            if stt is None:
+                print("[WARN] Speech-to-text module not available.")
+                continue
+            print("Listening...")
+            stt_result = stt.transcribe_from_microphone()
+            if stt_result.get("status") != "success":
+                print(f"[WARN] {stt_result.get('message', 'Voice transcription failed.')}")
+                continue
+            user_text = str(stt_result.get("text", "")).strip()
+            if not user_text:
+                print("[WARN] No speech detected.")
+                continue
+            print(f'Heard: "{user_text}"')
+
         command = interpreter.interpret(user_text)
         tool_name = str(command.get("tool", "unknown"))
         if not permission_manager.can_execute(tool_name, granted_level="read"):
@@ -97,7 +121,10 @@ def run_terminal_mode(
 
         memory.add_entry(command, result)
         prefix = "[OK]" if result.get("status") == "success" else "[WARN]"
-        print(f"{prefix} {format_status_message(result)}")
+        spoken_text = format_status_message(result)
+        print(f"{prefix} {spoken_text}")
+        if voice_enabled and tts is not None:
+            tts.speak(spoken_text)
 
 
 def main() -> None:
@@ -113,6 +140,9 @@ def main() -> None:
     memory = MemoryEngine()
     permission_manager = PermissionManager()
     sandbox = SandboxRunner()
+    voice_enabled = bool(settings.get("voice_enabled", True))
+    stt = SpeechToText(model_name=str(settings.get("stt_model", "base")))
+    tts = TextToSpeech()
 
     try:
         app = OrbWindow(
@@ -121,13 +151,25 @@ def main() -> None:
             memory=memory,
             permission_manager=permission_manager,
             sandbox=sandbox,
+            stt=stt,
+            tts=tts,
+            voice_enabled=voice_enabled,
         )
         app.run()
     except tk.TclError as exc:
         print("Project M GUI could not start (Tk/Tcl not configured).")
         print("Falling back to terminal mode.")
         print(f"Technical details: {exc}")
-        run_terminal_mode(interpreter, router, memory, permission_manager, sandbox)
+        run_terminal_mode(
+            interpreter,
+            router,
+            memory,
+            permission_manager,
+            sandbox,
+            stt=stt,
+            tts=tts,
+            voice_enabled=voice_enabled,
+        )
 
 
 if __name__ == "__main__":

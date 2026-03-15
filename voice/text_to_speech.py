@@ -9,7 +9,12 @@ import importlib.util
 class TextToSpeech:
     def __init__(self) -> None:
         self.available = importlib.util.find_spec("pyttsx3") is not None
-        self._engine = importlib.import_module("pyttsx3").init() if self.available else None
+        self._engine = None
+        if self.available:
+            try:
+                self._engine = importlib.import_module("pyttsx3").init()
+            except Exception:
+                self.available = False
 
     def speak(self, text: str) -> dict[str, object]:
         if not self.available or self._engine is None:

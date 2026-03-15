@@ -11,6 +11,8 @@ from ai_core.memory_engine import MemoryEngine
 from ai_core.tool_router import ToolRouter
 from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
+from voice.speech_to_text import SpeechToText
+from voice.text_to_speech import TextToSpeech
 from .command_panel import CommandPanel
 from .orb_renderer import OrbRenderer
 from .result_formatter import format_status_message
@@ -27,12 +29,18 @@ class OrbWindow:
         memory: MemoryEngine,
         permission_manager: PermissionManager,
         sandbox: SandboxRunner,
+        stt: SpeechToText | None = None,
+        tts: TextToSpeech | None = None,
+        voice_enabled: bool = True,
     ) -> None:
         self.interpreter = interpreter
         self.router = router
         self.memory = memory
         self.permission_manager = permission_manager
         self.sandbox = sandbox
+        self.stt = stt
+        self.tts = tts
+        self.voice_enabled = voice_enabled
 
         self.root = tk.Tk()
         self.root.title("Project M")
@@ -48,7 +56,7 @@ class OrbWindow:
         self.status = StatusIndicator(self.root)
         self.status.label.pack(pady=(6, 18))
 
-        self.panel = CommandPanel(self.root, self.handle_command)
+        self.panel = CommandPanel(self.root, self.handle_command, self.handle_voice_input)
         self.panel.frame.pack(pady=(0, 24))
 
         self.panel.focus()
@@ -74,14 +82,36 @@ class OrbWindow:
             self.root.after(150, self.root.destroy)
             return
 
-        if normalized == "[voice placeholder]":
-            self._set_state("listening", "Voice input is a placeholder in V1.")
-            self.root.after(900, lambda: self._set_state("idle", "How can I help you?"))
-            return
-
         self._set_state("thinking", "Thinking...")
         self.root.update_idletasks()
         Thread(target=self._run_command_in_background, args=(text,), daemon=True).start()
+
+    def handle_voice_input(self) -> None:
+        if not self.voice_enabled:
+            self._set_state("idle", "[WARN] Voice input is disabled in settings.")
+            return
+        if self.stt is None:
+            self._set_state("idle", "[WARN] Speech-to-text module not available.")
+            return
+        self._set_state("listening", "Listening for voice input...")
+        self.root.update_idletasks()
+        Thread(target=self._run_voice_capture, daemon=True).start()
+
+    def _run_voice_capture(self) -> None:
+        result = self.stt.transcribe_from_microphone()
+        status = result.get("status")
+        if status != "success":
+            message = str(result.get("message", "Voice transcription failed."))
+            self.root.after(0, lambda: self._set_state("idle", f"[WARN] {message}"))
+            return
+
+        text = str(result.get("text", "")).strip()
+        if not text:
+            self.root.after(0, lambda: self._set_state("idle", "[WARN] No speech detected."))
+            return
+
+        self.root.after(0, lambda: self._set_state("thinking", f'Heard: "{text}"'))
+        self._run_command_in_background(text)
 
     def _run_command_in_background(self, text: str) -> None:
         command = self.interpreter.interpret(text)
@@ -107,6 +137,8 @@ class OrbWindow:
         prefix = "[OK]" if status == "success" else "[WARN]"
 
         self._set_state("idle", f"{prefix} {message}")
+        if self.tts is not None and self.voice_enabled:
+            Thread(target=self.tts.speak, args=(message,), daemon=True).start()
 
     def run(self) -> None:
         self.root.mainloop()

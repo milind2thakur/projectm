@@ -2,5 +2,7 @@ psutil
 pyyaml
 llama-cpp-python
 faster-whisper
+numpy
+sounddevice
 pyttsx3
 pytest
