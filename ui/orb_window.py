@@ -13,6 +13,7 @@ from security.permission_manager import PermissionManager
 from security.sandbox_runner import SandboxRunner
 from .command_panel import CommandPanel
 from .orb_renderer import OrbRenderer
+from .result_formatter import format_status_message
 from .status_indicator import StatusIndicator
 
 
@@ -102,12 +103,8 @@ class OrbWindow:
         self.memory.add_entry(command, result)
 
         status = result.get("status", "error")
-        message = result.get("message", "No message")
+        message = format_status_message(result)
         prefix = "[OK]" if status == "success" else "[WARN]"
-
-        data = result.get("data")
-        if isinstance(data, dict) and "command_preview" in data:
-            message = f"{message} ({data['command_preview']})"
 
         self._set_state("idle", f"{prefix} {message}")
 
