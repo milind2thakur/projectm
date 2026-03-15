@@ -22,6 +22,33 @@ def load_settings(path: Path) -> dict:
         return yaml.safe_load(file) or {}
 
 
+def print_terminal_help() -> None:
+    print("Available commands:")
+    print("  help                 Show this help text")
+    print("  history [n]          Show the most recent n commands (default: 5)")
+    print("  exit | quit          Exit Project M")
+    print("  open firefox         Open an allowed app")
+    print("  open downloads       Open an allowed folder")
+    print("  show cpu usage       Show CPU usage")
+    print("  show memory usage    Show memory usage")
+    print("  show storage usage   Show storage usage")
+    print("  find <query>         Search file names under configured root")
+    print("  install <package>    Show install preview command")
+
+
+def print_terminal_history(memory: MemoryEngine, limit: int = 5) -> None:
+    history = memory.get_history(limit=limit)
+    if not history:
+        print("No command history yet.")
+        return
+    for index, entry in enumerate(history, start=1):
+        command = entry.get("command", {})
+        raw = command.get("raw_command", "<unknown>")
+        result = entry.get("result", {})
+        status = result.get("status", "unknown")
+        print(f"{index}. {raw} -> {status}")
+
+
 def run_terminal_mode(
     interpreter: CommandInterpreter,
     router: ToolRouter,
@@ -30,7 +57,7 @@ def run_terminal_mode(
     sandbox: SandboxRunner,
 ) -> None:
     print("Project M terminal mode is active.")
-    print("Type a command, or 'exit' to quit.")
+    print("Type a command, 'help' for options, or 'exit' to quit.")
     while True:
         try:
             user_text = input("projectm> ").strip()
@@ -44,6 +71,18 @@ def run_terminal_mode(
         if user_text.lower() in {"exit", "quit"}:
             print("Exiting Project M.")
             break
+
+        if user_text.lower() in {"help", "?"}:
+            print_terminal_help()
+            continue
+
+        if user_text.lower().startswith("history"):
+            parts = user_text.split()
+            limit = 5
+            if len(parts) > 1 and parts[1].isdigit():
+                limit = max(1, int(parts[1]))
+            print_terminal_history(memory, limit=limit)
+            continue
 
         command = interpreter.interpret(user_text)
         tool_name = str(command.get("tool", "unknown"))
